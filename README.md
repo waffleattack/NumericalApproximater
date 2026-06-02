@@ -4,26 +4,10 @@ A terminal app for exploring first-order ordinary differential equations of the 
 
 This guide assumes **Rust is already installed** on your computer. You do not need to know Rust to run the program.
 
----
-
-## 1. Get the project on your machine
-
-If you received a folder, open a terminal and go into it:
-
-```bash
-cd path/to/Numerical\ Approximater
-```
-
-If you use Git, clone the repository and enter it:
-
-```bash
-git clone https://github.com/waffleattack/NumericalApproximater.git
-cd NumericalApproximater
-```
 
 ---
 
-## 2. Build and run (first time)
+## 1. Build and run (first time)
 
 Rust’s build tool is **Cargo**. From the project folder, run:
 
@@ -31,19 +15,10 @@ Rust’s build tool is **Cargo**. From the project folder, run:
 cargo run --release
 ```
 
-What this does:
-
-- **`cargo`** — downloads dependencies (first run only), compiles the app, then starts it.
-- **`run`** — build and execute.
-- **`--release`** — optimized build (faster plotting). The first compile can take a minute; later runs are quicker.
-
-When the app starts, your terminal switches to a full-screen UI. To leave, press **`q`**.
-
-If you see an error like `command not found: cargo`, Rust is not on your `PATH`. Install Rust from [https://rustup.rs](https://rustup.rs) and open a **new** terminal window, then try again.
 
 ---
 
-## 3. What you see on screen
+## 2. What you see on screen
 
 | Area | Purpose |
 |------|---------|
@@ -55,7 +30,7 @@ The default equation is **`y - y^3`** (i.e. **y' = y − y³**). That model has 
 
 ---
 
-## 4. Quick start walkthrough
+## 3. Quick start walkthrough
 
 1. **Run** the app (`cargo run --release`).
 2. The graph should already show a solution for the defaults (**x₀ = 0**, **y₀ = 0.3**, **x_end = 3**, **h = 0.01**).
@@ -68,7 +43,7 @@ Errors (bad formula, invalid numbers) appear in a **red message** at the bottom 
 
 ---
 
-## 5. Keyboard reference
+## 4. Keyboard reference
 
 | Key | Action |
 |-----|--------|
@@ -84,7 +59,7 @@ In the **export** popup: **Tab** / **↑** / **↓** move between filename, **h*
 
 ---
 
-## 6. Equation syntax
+## 5. Equation syntax
 
 You only type the right-hand side **F**; the app shows `y' = F`.
 
@@ -100,7 +75,7 @@ You may paste a full equation such as `y'=y-y^3`; the app strips the `y' =` pref
 
 ---
 
-## 7. Parameters (sidebar)
+## 6. Parameters (sidebar)
 
 | Field | Meaning |
 |-------|---------|
@@ -114,7 +89,7 @@ Smaller **h** means more accurate curves but slower updates. The graph subsample
 
 ---
 
-## 8. Methods
+## 7. Methods
 
 - **Euler** — simplest; fastest per step, least accurate.
 - **Improved Euler** — predictor–corrector (Heun-type).
@@ -123,7 +98,7 @@ Smaller **h** means more accurate curves but slower updates. The graph subsample
 
 ---
 
-## 9. Export format
+## 8. Export format
 
 Exported files live in the **`exported/`** folder (created automatically). Each file lists the equation, parameters, and one line of `(x, y)` pairs per method (and per **y₀** when the family is enabled). Coordinates use **6 significant figures**.
 
@@ -141,7 +116,7 @@ Runge-Kutta: (0, 0.3), (0.03, 0.30891), ...
 
 ---
 
-## 10. Running again later
+## 9. Running again later
 
 From the project folder:
 
@@ -159,7 +134,7 @@ cargo test
 
 ---
 
-## 11. Troubleshooting
+## 10. Troubleshooting
 
 | Problem | What to try |
 |---------|-------------|
