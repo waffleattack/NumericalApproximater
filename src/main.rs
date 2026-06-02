@@ -171,7 +171,7 @@ fn handle_method_menu(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Char('q') => return true,
         KeyCode::Esc => app.close_method_menu(false),
-        KeyCode::Enter => app.close_method_menu(true),
+        KeyCode::Enter | KeyCode::Char(' ') => app.close_method_menu(true),
         KeyCode::Up => app.method_menu_up(),
         KeyCode::Down => app.method_menu_down(),
         _ => {}
