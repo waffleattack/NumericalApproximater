@@ -1,0 +1,11 @@
+[package]
+name = "numerical_approximater"
+version = "0.1.0"
+edition = "2021"
+description = "TUI for approximating first-order ODEs y' = F(x,y)"
+
+[dependencies]
+anyhow = "1"
+crossterm = "0.28"
+evalexpr = "11"
+ratatui = "0.29"
