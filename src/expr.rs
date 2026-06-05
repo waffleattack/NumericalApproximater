@@ -45,77 +45,58 @@ fn map_eval_error(e: EvalexprError) -> anyhow::Error {
 
 /// Prepare user-facing math notation for evalexpr.
 pub fn normalize_expression(raw: &str) -> Result<String> {
-    let s = strip_equation_lhs(raw.trim().to_string());
+    let s = strip_equation_lhs(raw.trim());
     anyhow::ensure!(!s.is_empty(), "equation cannot be empty");
-    validate_expression(&s)?;
-    let s = map_math_functions(&s);
+    validate_expression(s)?;
+    let s = map_math_functions(s);
     insert_implicit_multiplication(&s)
 }
 
 /// Remove optional `y' =` / `dy/dx =` prefix if the user pasted the whole equation.
-fn strip_equation_lhs(s: String) -> String {
-    if let Some(rhs) = strip_dy_dx_prefix(&s) {
-        return rhs;
-    }
-    if let Some(rhs) = strip_y_prime_prefix(&s) {
-        return rhs;
-    }
-    s
+fn strip_equation_lhs(s: &str) -> &str {
+    strip_dy_dx_prefix(s)
+        .or_else(|| strip_y_prime_prefix(s))
+        .unwrap_or(s)
+        .trim()
 }
 
-fn strip_dy_dx_prefix(s: &str) -> Option<String> {
-    let chars: Vec<char> = s.chars().collect();
-    if chars.len() < 2
-        || !chars[0].eq_ignore_ascii_case(&'d')
-        || !chars[1].eq_ignore_ascii_case(&'y')
+fn strip_dy_dx_prefix(s: &str) -> Option<&str> {
+    let s = s.trim_start();
+    let bytes = s.as_bytes();
+    if bytes.len() < 2
+        || !bytes[0].eq_ignore_ascii_case(&b'd')
+        || !bytes[1].eq_ignore_ascii_case(&b'y')
     {
         return None;
     }
     let mut idx = 2usize;
-    if idx < chars.len() && chars[idx] == '/' {
+    if idx < bytes.len() && bytes[idx] == b'/' {
         idx += 1;
-        if idx < chars.len() && chars[idx].eq_ignore_ascii_case(&'d') {
+        if idx < bytes.len() && bytes[idx].eq_ignore_ascii_case(&b'd') {
             idx += 1;
         }
-        if idx < chars.len() && chars[idx].eq_ignore_ascii_case(&'x') {
+        if idx < bytes.len() && bytes[idx].eq_ignore_ascii_case(&b'x') {
             idx += 1;
         }
     }
-    skip_spaces_chars(&chars, &mut idx);
-    if idx < chars.len() && chars[idx] == '=' {
-        idx += 1;
-        return Some(chars[idx..].iter().collect::<String>().trim().to_string());
-    }
-    None
+    let rest = s[idx..].trim_start();
+    rest.strip_prefix('=').map(str::trim)
 }
 
-fn strip_y_prime_prefix(s: &str) -> Option<String> {
-    let chars: Vec<char> = s.chars().collect();
-    if chars.is_empty() || !chars[0].eq_ignore_ascii_case(&'y') {
+fn strip_y_prime_prefix(s: &str) -> Option<&str> {
+    let s = s.trim_start();
+    let mut chars = s.char_indices();
+    let (_, y) = chars.next()?;
+    if !y.eq_ignore_ascii_case(&'y') {
         return None;
     }
-    let mut idx = 1usize;
-    skip_spaces_chars(&chars, &mut idx);
-    if idx >= chars.len() {
+    let (_, prime) = chars.next()?;
+    if !matches!(prime, '\'' | '′' | '’') {
         return None;
     }
-    let is_prime = matches!(chars[idx], '\'' | '′' | '’');
-    if !is_prime {
-        return None;
-    }
-    idx += 1;
-    skip_spaces_chars(&chars, &mut idx);
-    if idx >= chars.len() || chars[idx] != '=' {
-        return None;
-    }
-    idx += 1;
-    Some(chars[idx..].iter().collect::<String>().trim().to_string())
-}
-
-fn skip_spaces_chars(chars: &[char], idx: &mut usize) {
-    while *idx < chars.len() && chars[*idx].is_whitespace() {
-        *idx += 1;
-    }
+    let rest = chars.next().map(|(idx, _)| &s[idx..]).unwrap_or("");
+    let rest = rest.trim_start();
+    rest.strip_prefix('=').map(str::trim)
 }
 
 const FUNCTIONS: &[&str] = &[
@@ -277,7 +258,7 @@ fn split_xy_product(name: &str) -> Option<Vec<String>> {
         return Some(
             name.chars()
                 .map(|c| c.to_ascii_lowercase().to_string())
-                .collect(),
+                .collect::<Vec<_>>(),
         );
     }
     None
@@ -285,26 +266,26 @@ fn split_xy_product(name: &str) -> Option<Vec<String>> {
 
 fn map_math_functions(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 16);
-    let chars: Vec<char> = s.chars().collect();
+    let bytes = s.as_bytes();
     let mut i = 0;
-    while i < chars.len() {
-        if chars[i].is_ascii_alphabetic() {
+    while i < bytes.len() {
+        if bytes[i].is_ascii_alphabetic() {
             let start = i;
             i += 1;
-            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
                 i += 1;
             }
-            let name: String = chars[start..i].iter().collect();
-            if is_function_name(&name) {
+            let name = &s[start..i];
+            if is_function_name(name) {
                 out.push_str("math::");
-                out.push_str(&name.to_lowercase());
+                out.push_str(&name.to_ascii_lowercase());
             } else if name.eq_ignore_ascii_case("e") {
                 out.push('e');
             } else {
-                out.push_str(&name);
+                out.push_str(name);
             }
         } else {
-            out.push(chars[i]);
+            out.push(bytes[i] as char);
             i += 1;
         }
     }
@@ -328,36 +309,36 @@ struct Token {
 
 fn tokenize(s: &str) -> Result<Vec<Token>> {
     let mut tokens = Vec::new();
-    let chars: Vec<char> = s.chars().collect();
+    let bytes = s.as_bytes();
     let mut i = 0;
-    while i < chars.len() {
-        let c = chars[i];
-        if c.is_whitespace() {
+    while i < bytes.len() {
+        if bytes[i].is_ascii_whitespace() {
             i += 1;
             continue;
         }
-        if c.is_ascii_digit() || (c == '.' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit())
+        if bytes[i].is_ascii_digit()
+            || (bytes[i] == b'.' && i + 1 < bytes.len() && bytes[i + 1].is_ascii_digit())
         {
             let start = i;
             i += 1;
-            while i < chars.len() {
-                if chars[i].is_ascii_digit() || chars[i] == '.' {
+            while i < bytes.len() {
+                if bytes[i].is_ascii_digit() || bytes[i] == b'.' {
                     i += 1;
                     continue;
                 }
-                if matches!(chars[i], 'e' | 'E') {
+                if bytes[i] == b'e' || bytes[i] == b'E' {
                     let exp_digit = i + 1;
                     let exp_signed_digit = i + 2;
-                    let has_exponent = (exp_digit < chars.len() && chars[exp_digit].is_ascii_digit())
-                        || (exp_signed_digit < chars.len()
-                            && matches!(chars[exp_digit], '+' | '-')
-                            && chars[exp_signed_digit].is_ascii_digit());
+                    let has_exponent = (exp_digit < bytes.len() && bytes[exp_digit].is_ascii_digit())
+                        || (exp_signed_digit < bytes.len()
+                            && matches!(bytes[exp_digit], b'+' | b'-')
+                            && bytes[exp_signed_digit].is_ascii_digit());
                     if has_exponent {
                         i += 1;
-                        if i < chars.len() && matches!(chars[i], '+' | '-') {
+                        if i < bytes.len() && matches!(bytes[i], b'+' | b'-') {
                             i += 1;
                         }
-                        while i < chars.len() && chars[i].is_ascii_digit() {
+                        while i < bytes.len() && bytes[i].is_ascii_digit() {
                             i += 1;
                         }
                     }
@@ -366,21 +347,21 @@ fn tokenize(s: &str) -> Result<Vec<Token>> {
             }
             tokens.push(Token {
                 kind: TokenKind::Number,
-                text: chars[start..i].iter().collect(),
+                text: s[start..i].to_string(),
             });
             continue;
         }
-        
-        if c.is_ascii_alphabetic() || c == '_' {
+
+        if bytes[i].is_ascii_alphabetic() || bytes[i] == b'_' {
             let start = i;
             i += 1;
-            while i < chars.len()
-                && (chars[i].is_ascii_alphanumeric() || chars[i] == '_' || chars[i] == ':')
+            while i < bytes.len()
+                && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b':')
             {
                 i += 1;
             }
-            let name: String = chars[start..i].iter().collect();
-            if let Some(parts) = split_xy_product(&name) {
+            let name = &s[start..i];
+            if let Some(parts) = split_xy_product(name) {
                 for part in parts {
                     tokens.push(Token {
                         kind: TokenKind::Ident,
@@ -390,14 +371,15 @@ fn tokenize(s: &str) -> Result<Vec<Token>> {
             } else {
                 tokens.push(Token {
                     kind: TokenKind::Ident,
-                    text: name,
+                    text: name.to_string(),
                 });
             }
             continue;
         }
+
+        let c = bytes[i] as char;
         match c {
             '+' | '-' | '*' | '/' | '^' | '=' => {
-                // Treat '=' as invalid in RHS unless stripped; still tokenize for error message
                 tokens.push(Token {
                     kind: TokenKind::Op,
                     text: c.to_string(),

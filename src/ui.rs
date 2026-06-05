@@ -19,6 +19,22 @@ const COLOR_EULER: Color = Color::Green;
 const COLOR_IMPROVED: Color = Color::Yellow;
 const COLOR_RK: Color = Color::Cyan;
 
+fn field_border(focused: bool) -> Color {
+    if focused {
+        Color::Yellow
+    } else {
+        Color::DarkGray
+    }
+}
+
+fn dropdown_border(focused: bool, open: bool) -> Color {
+    if focused || open {
+        Color::Yellow
+    } else {
+        Color::DarkGray
+    }
+}
+
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
     let root = Layout::default()
@@ -61,14 +77,9 @@ fn fill_black(frame: &mut Frame, area: Rect) {
 
 fn draw_equation_bar(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focus == Focus::Equation;
-    let border = if focused {
-        Color::Yellow
-    } else {
-        Color::DarkGray
-    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border))
+        .border_style(Style::default().fg(field_border(focused)))
         .title(" F(x, y) ");
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -223,11 +234,6 @@ fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
 
 fn draw_y0_family_toggle(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focus == Focus::Y0Family;
-    let border = if focused {
-        Color::Yellow
-    } else {
-        Color::DarkGray
-    };
     let on = app.y0_family_enabled;
     let style = if focused {
         Style::default()
@@ -241,7 +247,7 @@ fn draw_y0_family_toggle(frame: &mut Frame, area: Rect, app: &App) {
     };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border))
+        .border_style(Style::default().fg(field_border(focused)))
         .title(" y₀ family ");
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -254,11 +260,6 @@ fn draw_y0_family_toggle(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_export_button(frame: &mut Frame, area: Rect, focused: bool) {
-    let border = if focused {
-        Color::Yellow
-    } else {
-        Color::DarkGray
-    };
     let style = if focused {
         Style::default()
             .fg(Color::Black)
@@ -269,7 +270,7 @@ fn draw_export_button(frame: &mut Frame, area: Rect, focused: bool) {
     };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border))
+        .border_style(Style::default().fg(field_border(focused)))
         .title(" Export ");
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -337,14 +338,9 @@ fn draw_prompt_field(
     input: &TextInput,
     focused: bool,
 ) {
-    let border = if focused {
-        Color::Yellow
-    } else {
-        Color::DarkGray
-    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border))
+        .border_style(Style::default().fg(field_border(focused)))
         .style(Style::default().bg(Color::Black))
         .title(format!(" {label} "));
     let inner = block.inner(area);
@@ -375,15 +371,10 @@ fn draw_dropdown_trigger(
     focused: bool,
     open: bool,
 ) {
-    let border = if focused || open {
-        Color::Yellow
-    } else {
-        Color::DarkGray
-    };
     let arrow = if open { "▲" } else { "▼" };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border))
+        .border_style(Style::default().fg(dropdown_border(focused, open)))
         .title(format!(" {title} "));
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -443,14 +434,9 @@ fn draw_sidebar_field(
     input: &TextInput,
     focused: bool,
 ) {
-    let border = if focused {
-        Color::Yellow
-    } else {
-        Color::DarkGray
-    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border))
+        .border_style(Style::default().fg(field_border(focused)))
         .title(format!(" {label} "));
     let inner = block.inner(area);
     frame.render_widget(block, area);
