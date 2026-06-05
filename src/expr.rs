@@ -545,4 +545,81 @@ mod tests {
             .to_string();
         assert_eq!(err, "parse error: unclosed '('");
     }
+
+    #[test]
+    fn strip_dy_dx_prefix() {
+        assert_eq!(normalize_expression("dy/dx = x").unwrap(), "x");
+        assert_eq!(normalize_expression("Dy/Dx = 2*y").unwrap(), "2*y");
+        assert_eq!(normalize_expression("dy/dx=x+1").unwrap(), "x+1");
+    }
+
+    #[test]
+    fn scientific_notation_numbers() {
+        let f = OdeFunction::parse("1e3").unwrap();
+        assert!((f.eval(0.0, 0.0).unwrap() - 1000.0).abs() < 1e-6);
+        let f = OdeFunction::parse("1e-3 + x").unwrap();
+        assert!((f.eval(1.0, 0.0).unwrap() - 1.001).abs() < 1e-6);
+    }
+
+    #[test]
+    fn scientific_notation_does_not_confuse_with_euler_e() {
+        let f = OdeFunction::parse("1e2").unwrap();
+        assert!((f.eval(0.0, 0.0).unwrap() - 100.0).abs() < 1e-6);
+        let f = OdeFunction::parse("e^x").unwrap();
+        assert!((f.eval(1.0, 0.0).unwrap() - std::f64::consts::E).abs() < 1e-10);
+    }
+
+    #[test]
+    fn exp_ln_sqrt_functions() {
+        let f = OdeFunction::parse("exp(x)").unwrap();
+        assert!((f.eval(1.0, 0.0).unwrap() - std::f64::consts::E).abs() < 1e-10);
+        let f = OdeFunction::parse("ln(e)").unwrap();
+        assert!((f.eval(0.0, 0.0).unwrap() - 1.0).abs() < 1e-10);
+        let f = OdeFunction::parse("sqrt(4)").unwrap();
+        assert!((f.eval(0.0, 0.0).unwrap() - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn validate_at_succeeds_in_domain() {
+        let f = OdeFunction::parse("sqrt(y)").unwrap();
+        assert!(f.validate_at(0.0, 4.0).is_ok());
+    }
+
+    #[test]
+    fn validate_at_reports_eval_errors() {
+        let f = OdeFunction::parse("1/0").unwrap();
+        let err = f.validate_at(0.0, 0.0).unwrap_err().to_string();
+        assert!(err.contains("invalid at x=0, y=0"));
+    }
+
+    #[test]
+    fn unary_minus() {
+        let f = OdeFunction::parse("-x").unwrap();
+        assert!((f.eval(3.0, 0.0).unwrap() - (-3.0)).abs() < 1e-10);
+        let f = OdeFunction::parse("-y + 2").unwrap();
+        assert!((f.eval(0.0, 5.0).unwrap() - (-3.0)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn rejects_trailing_operator() {
+        let err = normalize_expression("x+")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert!(err.contains("unexpected '+' at end of expression"));
+        let err = normalize_expression("2*")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert!(err.contains("unexpected '*' at end of expression"));
+    }
+
+    #[test]
+    fn rejects_unary_minus_without_operand() {
+        let err = normalize_expression("-")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert!(err.contains("'-' is missing an operand"));
+    }
 }
