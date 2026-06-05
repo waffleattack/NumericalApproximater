@@ -14,6 +14,7 @@ pub struct Point {
 
 /// Integrate y' = F(x,y) from `x0` to `x_end` with fixed step size `h`.
 ///
+/// Integrates forward when `x_end > x0` and backward when `x_end < x0`.
 /// The last step may be shorter so the final point lands exactly on `x_end`.
 ///
 /// # Arguments
@@ -22,8 +23,8 @@ pub struct Point {
 /// * `method` - Numerical method to use.
 /// * `x0` - Initial x value.
 /// * `y0` - Initial y value.
-/// * `x_end` - Target x value (must be greater than `x0`).
-/// * `h` - Fixed step size (must be positive).
+/// * `x_end` - Target x value (must differ from `x0`).
+/// * `h` - Fixed step size magnitude (must be positive).
 ///
 /// # Returns
 ///
@@ -31,7 +32,7 @@ pub struct Point {
 ///
 /// # Errors
 ///
-/// Returns an error if `h <= 0`, `x_end <= x0`, or evaluation fails during stepping.
+/// Returns an error if `h <= 0`, `x_end == x0`, or evaluation fails during stepping.
 pub fn integrate(
     f: &OdeFunction,
     method: Method,
@@ -43,21 +44,30 @@ pub fn integrate(
     if h <= 0.0 {
         bail!("step size h must be positive");
     }
-    if x_end <= x0 {
-        bail!("x_end must be greater than x0");
+
+    const EPS: f64 = 1e-12;
+    let span = x_end - x0;
+    if span.abs() <= EPS {
+        bail!("x_end must differ from x0");
     }
 
-    let est_steps = ((x_end - x0) / h).ceil() as usize + 1;
+    let forward = span > 0.0;
+    let est_steps = (span.abs() / h).ceil() as usize + 1;
     let mut points = Vec::with_capacity(est_steps);
     let mut x = x0;
     let mut y = y0;
     points.push(Point { x, y });
 
-    const EPS: f64 = 1e-12;
-    while x < x_end - EPS {
-        let step = h.min(x_end - x);
-        y = advance(f, method, x, y, step)?;
-        x += step;
+    while if forward {
+        x < x_end - EPS
+    } else {
+        x > x_end + EPS
+    } {
+        let remaining = if forward { x_end - x } else { x - x_end };
+        let step_mag = h.min(remaining);
+        let signed_step = if forward { step_mag } else { -step_mag };
+        y = advance(f, method, x, y, signed_step)?;
+        x += signed_step;
         points.push(Point { x, y });
     }
 
@@ -343,16 +353,30 @@ mod tests {
     }
 
     #[test]
-    fn integrate_rejects_x_end_not_greater_than_x0() {
+    fn integrate_rejects_x_end_equal_to_x0() {
         let f = unit_slope();
         let err = integrate(&f, Method::Euler, 1.0, 0.0, 1.0, 0.1)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("x_end must be greater than x0"));
-        let err = integrate(&f, Method::Euler, 2.0, 0.0, 1.0, 0.1)
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("x_end must be greater than x0"));
+        assert!(err.contains("x_end must differ from x0"));
+    }
+
+    #[test]
+    fn fixed_h_reaches_x_end_backward() {
+        let f = unit_slope();
+        let pts = integrate(&f, Method::Euler, 1.0, 1.0, 0.0, 0.25).unwrap();
+        assert!((pts.first().unwrap().x - 1.0).abs() < 1e-9);
+        assert!((pts.last().unwrap().x - 0.0).abs() < 1e-9);
+        assert!((pts.last().unwrap().y - 0.0).abs() < 1e-9);
+        assert_eq!(pts.len(), 5);
+    }
+
+    #[test]
+    fn backward_euler_y_prime_one_approximates_y_equals_x() {
+        let f = unit_slope();
+        let pts = integrate(&f, Method::Euler, 1.0, 1.0, 0.0, 0.1).unwrap();
+        assert!((pts.last().unwrap().x - 0.0).abs() < 1e-9);
+        assert!(max_y_error(&pts) < 0.1);
     }
 
     #[test]
