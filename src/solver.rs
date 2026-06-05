@@ -130,11 +130,201 @@ mod tests {
     use super::*;
     use crate::expr::OdeFunction;
 
+    fn unit_slope() -> OdeFunction {
+        OdeFunction::parse("1").unwrap()
+    }
+
+    fn max_y_error(pts: &[Point]) -> f64 {
+        pts.iter()
+            .map(|p| (p.y - p.x).abs())
+            .fold(0.0_f64, f64::max)
+    }
+
     #[test]
     fn fixed_h_reaches_x_end() {
-        let f = OdeFunction::parse("1").unwrap();
+        let f = unit_slope();
         let pts = integrate(&f, Method::Euler, 0.0, 0.0, 1.0, 0.25).unwrap();
         assert!((pts.last().unwrap().x - 1.0).abs() < 1e-9);
         assert_eq!(pts.len(), 5); // 0, 0.25, 0.5, 0.75, 1.0
+    }
+
+    #[test]
+    fn euler_y_prime_one_approximates_y_equals_x() {
+        let f = unit_slope();
+        let pts = integrate(&f, Method::Euler, 0.0, 0.0, 1.0, 0.1).unwrap();
+        assert!((pts.last().unwrap().x - 1.0).abs() < 1e-9);
+        assert!(max_y_error(&pts) < 0.1);
+    }
+
+    #[test]
+    fn improved_euler_y_prime_one_approximates_y_equals_x() {
+        let f = unit_slope();
+        let pts = integrate(&f, Method::ImprovedEuler, 0.0, 0.0, 1.0, 0.1).unwrap();
+        assert!((pts.last().unwrap().x - 1.0).abs() < 1e-9);
+        assert!(max_y_error(&pts) < 0.01);
+    }
+
+    #[test]
+    fn rk4_y_prime_one_approximates_y_equals_x() {
+        let f = unit_slope();
+        let pts = integrate(&f, Method::RungeKutta, 0.0, 0.0, 1.0, 0.1).unwrap();
+        assert!((pts.last().unwrap().x - 1.0).abs() < 1e-9);
+        assert!(max_y_error(&pts) < 1e-6);
+    }
+
+    #[test]
+    fn rk4_more_accurate_than_euler_for_same_h() {
+        let f = OdeFunction::parse("y").unwrap();
+        let h = 0.25;
+        let analytic = |x: f64| x.exp();
+        let euler_pts = integrate(&f, Method::Euler, 0.0, 1.0, 1.0, h).unwrap();
+        let rk4_pts = integrate(&f, Method::RungeKutta, 0.0, 1.0, 1.0, h).unwrap();
+        let euler_err = euler_pts
+            .iter()
+            .map(|p| (p.y - analytic(p.x)).abs())
+            .fold(0.0_f64, f64::max);
+        let rk4_err = rk4_pts
+            .iter()
+            .map(|p| (p.y - analytic(p.x)).abs())
+            .fold(0.0_f64, f64::max);
+        assert!(rk4_err < euler_err);
+    }
+
+    #[test]
+    fn integrate_rejects_non_positive_h() {
+        let f = unit_slope();
+        let err = integrate(&f, Method::Euler, 0.0, 0.0, 1.0, 0.0)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("step size h must be positive"));
+        let err = integrate(&f, Method::Euler, 0.0, 0.0, 1.0, -0.1)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("step size h must be positive"));
+    }
+
+    #[test]
+    fn integrate_rejects_x_end_not_greater_than_x0() {
+        let f = unit_slope();
+        let err = integrate(&f, Method::Euler, 1.0, 0.0, 1.0, 0.1)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("x_end must be greater than x0"));
+        let err = integrate(&f, Method::Euler, 2.0, 0.0, 1.0, 0.1)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("x_end must be greater than x0"));
+    }
+
+    #[test]
+    fn non_uniform_last_step_when_x_end_not_divisible_by_h() {
+        let f = unit_slope();
+        let pts = integrate(&f, Method::Euler, 0.0, 0.0, 1.0, 0.3).unwrap();
+        assert_eq!(pts.len(), 5);
+        assert!((pts[0].x - 0.0).abs() < 1e-12);
+        assert!((pts[1].x - 0.3).abs() < 1e-12);
+        assert!((pts[2].x - 0.6).abs() < 1e-12);
+        assert!((pts[3].x - 0.9).abs() < 1e-12);
+        assert!((pts[4].x - 1.0).abs() < 1e-12);
+        assert!((pts[4].x - pts[3].x - 0.1).abs() < 1e-12);
+    }
+
+    #[test]
+    fn linspace_inclusive_single_point() {
+        let v = linspace_inclusive(2.0, 5.0, 1).unwrap();
+        assert_eq!(v, vec![2.0]);
+    }
+
+    #[test]
+    fn linspace_inclusive_endpoints() {
+        let v = linspace_inclusive(0.0, 1.0, 3).unwrap();
+        assert_eq!(v.len(), 3);
+        assert!((v[0] - 0.0).abs() < 1e-12);
+        assert!((v[1] - 0.5).abs() < 1e-12);
+        assert!((v[2] - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn linspace_inclusive_rejects_zero_count() {
+        let err = linspace_inclusive(0.0, 1.0, 0)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("need at least one y₀ value"));
+    }
+
+    #[test]
+    fn subsample_rejects_zero_n() {
+        let pts = vec![Point { x: 0.0, y: 0.0 }];
+        let err = subsample(&pts, 0).unwrap_err().to_string();
+        assert!(err.contains("number of points must be at least 1"));
+    }
+
+    #[test]
+    fn subsample_rejects_empty_points() {
+        let err = subsample(&[], 1).unwrap_err().to_string();
+        assert!(err.contains("no points to sample"));
+    }
+
+    #[test]
+    fn subsample_n_one_returns_first() {
+        let pts = vec![
+            Point { x: 0.0, y: 0.0 },
+            Point { x: 1.0, y: 1.0 },
+        ];
+        let out = subsample(&pts, 1).unwrap();
+        assert_eq!(out.len(), 1);
+        assert!((out[0].x - 0.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn subsample_n_ge_len_returns_all() {
+        let pts = vec![
+            Point { x: 0.0, y: 0.0 },
+            Point { x: 1.0, y: 1.0 },
+            Point { x: 2.0, y: 2.0 },
+        ];
+        let out = subsample(&pts, 5).unwrap();
+        assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn subsample_intermediate_n_evenly_spaced_indices() {
+        let pts: Vec<Point> = (0..5)
+            .map(|i| {
+                let x = i as f64;
+                Point { x, y: x }
+            })
+            .collect();
+        let out = subsample(&pts, 3).unwrap();
+        assert_eq!(out.len(), 3);
+        assert!((out[0].x - 0.0).abs() < 1e-12);
+        assert!((out[1].x - 2.0).abs() < 1e-12);
+        assert!((out[2].x - 4.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn subsample_plot_returns_all_when_len_le_max() {
+        let pts = vec![
+            Point { x: 0.0, y: 0.0 },
+            Point { x: 1.0, y: 1.0 },
+        ];
+        let out = subsample_plot(&pts, 10);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0], (0.0, 0.0));
+        assert_eq!(out[1], (1.0, 1.0));
+    }
+
+    #[test]
+    fn subsample_plot_caps_when_len_gt_max() {
+        let pts: Vec<Point> = (0..100)
+            .map(|i| {
+                let x = i as f64;
+                Point { x, y: x }
+            })
+            .collect();
+        let out = subsample_plot(&pts, 10);
+        assert_eq!(out.len(), 10);
+        assert_eq!(out.first().unwrap(), &(0.0, 0.0));
+        assert_eq!(out.last().unwrap(), &(99.0, 99.0));
     }
 }

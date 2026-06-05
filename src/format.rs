@@ -127,4 +127,61 @@ mod tests {
         assert!(bounds[0] <= 1.0001);
         assert!(bounds[1] >= 1.0019);
     }
+
+    #[test]
+    fn round_sigfigs_negative() {
+        assert!((round_sigfigs(-1.23456, 3) - (-1.23)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn round_sigfigs_large() {
+        assert!((round_sigfigs(1_234_567.89, 3) - 1_230_000.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn round_sigfigs_small() {
+        assert!((round_sigfigs(0.00123456, 3) - 0.00123).abs() < 1e-8);
+    }
+
+    #[test]
+    fn round_sigfigs_non_finite() {
+        assert!(round_sigfigs(f64::INFINITY, 3).is_infinite());
+        assert!(round_sigfigs(f64::NEG_INFINITY, 3).is_infinite());
+        assert!(round_sigfigs(f64::NAN, 3).is_nan());
+    }
+
+    #[test]
+    fn snap_axis_bounds_equal_spreads() {
+        let snapped = snap_axis_bounds([1.0, 1.0], 3);
+        assert!(snapped[0] < snapped[1]);
+        assert!(snapped[0] < 1.0);
+        assert!(snapped[1] > 1.0);
+    }
+
+    #[test]
+    fn snap_axis_bounds_swapped_inputs() {
+        let snapped = snap_axis_bounds([5.0, 1.0], 3);
+        assert!(snapped[0] <= snapped[1]);
+        assert!((snapped[0] - 1.0).abs() < 1.0);
+        assert!((snapped[1] - 5.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn format_sigfigs_with_custom_digits() {
+        assert_eq!(format_sigfigs_with(3.14159265, 2), "3.1");
+        assert_eq!(format_sigfigs_with(3.14159265, 4), "3.142");
+    }
+
+    #[test]
+    fn trim_float_trims_decimal_trailing_zeros() {
+        assert_eq!(trim_float(1.500000), "1.5");
+        assert_eq!(trim_float(2.0), "2");
+        assert_eq!(trim_float(10.0), "10");
+    }
+
+    #[test]
+    fn format_sigfigs_trims_trailing_zeros() {
+        assert_eq!(format_sigfigs(1.5), "1.5");
+        assert_eq!(format_sigfigs(2.0), "2");
+    }
 }
