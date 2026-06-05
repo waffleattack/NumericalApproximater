@@ -30,6 +30,7 @@ impl OdeFunction {
         let mut ctx = HashMapContext::new();
         ctx.set_value("x".into(), Value::from(x))?;
         ctx.set_value("y".into(), Value::from(y))?;
+        ctx.set_value("e".into(), Value::from(std::f64::consts::E))?;
         let v = eval_with_context(&self.expr, &ctx).map_err(map_eval_error)?;
         v.as_number()
             .map_err(|_| anyhow::anyhow!("expression must evaluate to a number"))
@@ -44,8 +45,9 @@ fn map_eval_error(e: EvalexprError) -> anyhow::Error {
 pub fn normalize_expression(raw: &str) -> Result<String> {
     let s = strip_equation_lhs(raw.trim().to_string());
     anyhow::ensure!(!s.is_empty(), "equation cannot be empty");
+    validate_expression(&s)?;
     let s = map_math_functions(&s);
-    Ok(insert_implicit_multiplication(&s))
+    insert_implicit_multiplication(&s)
 }
 
 /// Remove optional `y' =` / `dy/dx =` prefix if the user pasted the whole equation.
@@ -126,6 +128,138 @@ fn is_function_name(name: &str) -> bool {
         .any(|f| f.eq_ignore_ascii_case(base))
 }
 
+fn is_allowed_identifier(name: &str) -> bool {
+    name.eq_ignore_ascii_case("x")
+        || name.eq_ignore_ascii_case("y")
+        || name.eq_ignore_ascii_case("e")
+        || is_function_name(name)
+}
+
+/// Reject unknown names and other structural issues before evalexpr parsing.
+fn validate_expression(s: &str) -> Result<()> {
+    let tokens = tokenize(s)?;
+    let mut paren_depth = 0i32;
+
+    for tok in &tokens {
+        match tok.kind {
+            TokenKind::LParen => paren_depth += 1,
+            TokenKind::RParen => {
+                paren_depth -= 1;
+                if paren_depth < 0 {
+                    anyhow::bail!("parse error: unexpected ')'");
+                }
+            }
+            TokenKind::Ident if !is_allowed_identifier(&tok.text) => {
+                anyhow::bail!("parse error: unknown identifier '{}'", tok.text);
+            }
+            TokenKind::Op if tok.text == "=" => {
+                anyhow::bail!("parse error: unexpected '=' in expression");
+            }
+            _ => {}
+        }
+    }
+
+    if paren_depth > 0 {
+        anyhow::bail!("parse error: unclosed '('");
+    }
+
+    validate_syntax(&tokens)?;
+    Ok(())
+}
+
+fn is_operand_end(tok: Option<&Token>) -> bool {
+    matches!(
+        tok,
+        Some(Token {
+            kind: TokenKind::Number | TokenKind::Ident | TokenKind::RParen,
+            ..
+        })
+    )
+}
+
+fn is_operand_start(tok: Option<&Token>) -> bool {
+    match tok {
+        Some(Token {
+            kind: TokenKind::Number | TokenKind::Ident | TokenKind::LParen,
+            ..
+        }) => true,
+        Some(Token {
+            kind: TokenKind::Op,
+            text,
+            ..
+        }) if text == "-" => true,
+        _ => false,
+    }
+}
+
+/// Catch token sequences that are syntactically tokenizable but not valid math.
+fn validate_syntax(tokens: &[Token]) -> Result<()> {
+    for (i, tok) in tokens.iter().enumerate() {
+        if tok.kind == TokenKind::Ident && is_function_name(&tok.text) {
+            let name = tok.text.as_str();
+            match tokens.get(i + 1) {
+                Some(Token {
+                    kind: TokenKind::Op,
+                    text,
+                    ..
+                }) if text == "^" => {
+                    anyhow::bail!(
+                        "parse error: cannot raise function '{name}' to a power; write {name}(...)^... instead, e.g. {name}(x)^3"
+                    );
+                }
+                Some(Token {
+                    kind: TokenKind::LParen, ..
+                }) => {}
+                Some(_) => {
+                    anyhow::bail!(
+                        "parse error: function '{name}' must be called with parentheses, e.g. {name}(x)"
+                    );
+                }
+                None => {
+                    anyhow::bail!(
+                        "parse error: function '{name}' must be called with parentheses, e.g. {name}(x)"
+                    );
+                }
+            }
+        }
+    }
+
+    for (i, tok) in tokens.iter().enumerate() {
+        if tok.kind != TokenKind::Op {
+            continue;
+        }
+        let op = tok.text.as_str();
+        if op == "=" {
+            continue;
+        }
+
+        if op == "-" {
+            let unary = i == 0 || !is_operand_end(tokens.get(i - 1));
+            if unary {
+                if !is_operand_start(tokens.get(i + 1)) {
+                    anyhow::bail!("parse error: '-' is missing an operand");
+                }
+            } else if !is_operand_start(tokens.get(i + 1)) {
+                anyhow::bail!("parse error: unexpected '{op}' at end of expression");
+            }
+            continue;
+        }
+
+        if !matches!(op, "+" | "*" | "/" | "^") {
+            continue;
+        }
+
+        if !is_operand_end(tokens.get(i - 1)) {
+            anyhow::bail!("parse error: unexpected '{op}' at start of expression");
+        }
+        if !is_operand_start(tokens.get(i + 1)) {
+            anyhow::bail!("parse error: unexpected '{op}' at end of expression");
+        }
+    }
+
+    Ok(())
+}
+
 /// `xy` → `x`, `y` (implicit multiplication between variables).
 fn split_xy_product(name: &str) -> Option<Vec<String>> {
     if name.len() <= 1 {
@@ -162,6 +296,8 @@ fn map_math_functions(s: &str) -> String {
             if is_function_name(&name) {
                 out.push_str("math::");
                 out.push_str(&name.to_lowercase());
+            } else if name.eq_ignore_ascii_case("e") {
+                out.push('e');
             } else {
                 out.push_str(&name);
             }
@@ -202,10 +338,29 @@ fn tokenize(s: &str) -> Result<Vec<Token>> {
         {
             let start = i;
             i += 1;
-            while i < chars.len()
-                && (chars[i].is_ascii_digit() || chars[i] == '.' || chars[i] == 'e' || chars[i] == 'E')
-            {
-                i += 1;
+            while i < chars.len() {
+                if chars[i].is_ascii_digit() || chars[i] == '.' {
+                    i += 1;
+                    continue;
+                }
+                if matches!(chars[i], 'e' | 'E') {
+                    let exp_digit = i + 1;
+                    let exp_signed_digit = i + 2;
+                    let has_exponent = (exp_digit < chars.len() && chars[exp_digit].is_ascii_digit())
+                        || (exp_signed_digit < chars.len()
+                            && matches!(chars[exp_digit], '+' | '-')
+                            && chars[exp_signed_digit].is_ascii_digit());
+                    if has_exponent {
+                        i += 1;
+                        if i < chars.len() && matches!(chars[i], '+' | '-') {
+                            i += 1;
+                        }
+                        while i < chars.len() && chars[i].is_ascii_digit() {
+                            i += 1;
+                        }
+                    }
+                }
+                break;
             }
             tokens.push(Token {
                 kind: TokenKind::Number,
@@ -213,6 +368,7 @@ fn tokenize(s: &str) -> Result<Vec<Token>> {
             });
             continue;
         }
+        
         if c.is_ascii_alphabetic() || c == '_' {
             let start = i;
             i += 1;
@@ -260,7 +416,7 @@ fn tokenize(s: &str) -> Result<Vec<Token>> {
                 });
                 i += 1;
             }
-            _ => anyhow::bail!("unexpected character '{c}' in expression"),
+            _ => anyhow::bail!("parse error: unexpected character '{c}'"),
         }
     }
     Ok(tokens)
@@ -284,10 +440,10 @@ fn needs_implicit_mult(prev: &Token, curr: &Token) -> bool {
     true
 }
 
-fn insert_implicit_multiplication(s: &str) -> String {
-    let tokens = tokenize(s).unwrap_or_default();
+fn insert_implicit_multiplication(s: &str) -> Result<String> {
+    let tokens = tokenize(s)?;
     if tokens.is_empty() {
-        return String::new();
+        return Ok(String::new());
     }
 
     let mut out = String::new();
@@ -301,7 +457,7 @@ fn insert_implicit_multiplication(s: &str) -> String {
         out.push_str(&tok.text);
         prev = Some(tok);
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -334,5 +490,59 @@ mod tests {
     fn eval_implicit() {
         let f = OdeFunction::parse("x+2y").unwrap();
         assert!((f.eval(1.0, 3.0).unwrap() - 7.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn supports_e_to_x() {
+        let f = OdeFunction::parse("e^x").unwrap();
+        assert!((f.eval(1.0, 0.0).unwrap() - std::f64::consts::E).abs() < 1e-10);
+    }
+
+    #[test]
+    fn rejects_unknown_identifier() {
+        let err = normalize_expression("e^x+sos")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert_eq!(err, "parse error: unknown identifier 'sos'");
+    }
+
+    #[test]
+    fn rejects_function_raised_to_power() {
+        let err = normalize_expression("sin^3")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert_eq!(
+            err,
+            "parse error: cannot raise function 'sin' to a power; write sin(...)^... instead, e.g. sin(x)^3"
+        );
+    }
+
+    #[test]
+    fn rejects_bare_function_name() {
+        let err = normalize_expression("sin")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert_eq!(
+            err,
+            "parse error: function 'sin' must be called with parentheses, e.g. sin(x)"
+        );
+    }
+
+    #[test]
+    fn allows_function_result_power() {
+        let f = OdeFunction::parse("sin(x)^3").unwrap();
+        assert!(f.eval(0.0, 0.0).is_ok());
+    }
+
+    #[test]
+    fn rejects_unclosed_paren() {
+        let err = normalize_expression("sin(x+1")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert_eq!(err, "parse error: unclosed '('");
     }
 }
