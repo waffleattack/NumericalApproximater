@@ -69,3 +69,97 @@ fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
         .map(|(i, _)| i)
         .unwrap_or(s.len())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_places_cursor_at_end() {
+        let input = TextInput::new("abc");
+        assert_eq!(input.cursor, 3);
+        assert_eq!(input.as_str(), "abc");
+    }
+
+    #[test]
+    fn insert_at_cursor() {
+        let mut input = TextInput::new("ac");
+        input.cursor = 1;
+        input.insert('b');
+        assert_eq!(input.as_str(), "abc");
+        assert_eq!(input.cursor, 2);
+    }
+
+    #[test]
+    fn backspace_at_start_is_noop() {
+        let mut input = TextInput::new("a");
+        input.cursor = 0;
+        input.backspace();
+        assert_eq!(input.as_str(), "a");
+        assert_eq!(input.cursor, 0);
+    }
+
+    #[test]
+    fn backspace_removes_previous_char() {
+        let mut input = TextInput::new("ab");
+        input.cursor = 2;
+        input.backspace();
+        assert_eq!(input.as_str(), "a");
+        assert_eq!(input.cursor, 1);
+    }
+
+    #[test]
+    fn delete_at_end_is_noop() {
+        let mut input = TextInput::new("ab");
+        input.cursor = 2;
+        input.delete();
+        assert_eq!(input.as_str(), "ab");
+    }
+
+    #[test]
+    fn delete_removes_char_at_cursor() {
+        let mut input = TextInput::new("abc");
+        input.cursor = 1;
+        input.delete();
+        assert_eq!(input.as_str(), "ac");
+        assert_eq!(input.cursor, 1);
+    }
+
+    #[test]
+    fn cursor_left_stops_at_start() {
+        let mut input = TextInput::new("ab");
+        input.cursor_left();
+        input.cursor_left();
+        assert_eq!(input.cursor, 0);
+    }
+
+    #[test]
+    fn cursor_right_stops_at_end() {
+        let mut input = TextInput::new("ab");
+        input.cursor_end();
+        input.cursor_right();
+        assert_eq!(input.cursor, 2);
+    }
+
+    #[test]
+    fn cursor_home_and_end() {
+        let mut input = TextInput::new("hello");
+        input.cursor_home();
+        assert_eq!(input.cursor, 0);
+        input.cursor_end();
+        assert_eq!(input.cursor, 5);
+    }
+
+    #[test]
+    fn unicode_cursor_positions() {
+        let mut input = TextInput::new("aéb");
+        assert_eq!(input.char_len(), 3);
+        input.cursor = 1;
+        input.insert('ñ');
+        assert_eq!(input.as_str(), "añéb");
+        assert_eq!(input.char_len(), 4);
+        input.cursor = 2;
+        input.backspace();
+        assert_eq!(input.as_str(), "aéb");
+    }
+}

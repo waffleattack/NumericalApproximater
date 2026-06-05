@@ -443,3 +443,191 @@ impl App {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_app() -> App {
+        App::new()
+    }
+
+    #[test]
+    fn parse_params_valid() {
+        let app = test_app();
+        let (x0, y0, x_end, h) = app.parse_params().unwrap();
+        assert!((x0 - 0.0).abs() < 1e-12);
+        assert!((y0 - 0.3).abs() < 1e-12);
+        assert!((x_end - 3.0).abs() < 1e-12);
+        assert!((h - 0.01).abs() < 1e-12);
+    }
+
+    #[test]
+    fn parse_params_invalid_x0() {
+        let mut app = test_app();
+        app.x0 = TextInput::new("not-a-number");
+        let err = app.parse_params().unwrap_err().to_string();
+        assert!(err.contains("x₀ must be a number"));
+    }
+
+    #[test]
+    fn parse_params_invalid_h() {
+        let mut app = test_app();
+        app.h = TextInput::new("abc");
+        let err = app.parse_params().unwrap_err().to_string();
+        assert!(err.contains("h must be a positive number"));
+    }
+
+    #[test]
+    fn y0_values_single_when_family_off() {
+        let app = test_app();
+        let vals = app.y0_values().unwrap();
+        assert_eq!(vals.len(), 1);
+        assert!((vals[0] - 0.3).abs() < 1e-12);
+    }
+
+    #[test]
+    fn y0_values_family_on_linspace() {
+        let mut app = test_app();
+        app.y0_family_enabled = true;
+        app.y0 = TextInput::new("0");
+        app.y0_end = TextInput::new("2");
+        app.y0_count = TextInput::new("3");
+        let vals = app.y0_values().unwrap();
+        assert_eq!(vals.len(), 3);
+        assert!((vals[0] - 0.0).abs() < 1e-12);
+        assert!((vals[1] - 1.0).abs() < 1e-12);
+        assert!((vals[2] - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn y0_values_rejects_zero_count() {
+        let mut app = test_app();
+        app.y0_family_enabled = true;
+        app.y0_count = TextInput::new("0");
+        let err = app.y0_values().unwrap_err().to_string();
+        assert!(err.contains("y₀ count must be at least 1"));
+    }
+
+    #[test]
+    fn y0_values_rejects_count_over_max() {
+        let mut app = test_app();
+        app.y0_family_enabled = true;
+        app.y0_count = TextInput::new("100");
+        let err = app.y0_values().unwrap_err().to_string();
+        assert!(err.contains("y₀ count cannot exceed"));
+    }
+
+    #[test]
+    fn recompute_success_simple_equation() {
+        let mut app = test_app();
+        app.equation = TextInput::new("1");
+        app.method_choice = MethodChoice::Euler;
+        app.x0 = TextInput::new("0");
+        app.y0 = TextInput::new("0");
+        app.x_end = TextInput::new("1");
+        app.h = TextInput::new("0.5");
+        app.recompute().unwrap();
+        assert!(app.error.is_none());
+        assert_eq!(app.curves.len(), 1);
+        assert!(!app.curves[0].points.is_empty());
+    }
+
+    #[test]
+    fn recompute_fails_on_bad_equation() {
+        let mut app = test_app();
+        app.equation = TextInput::new("sin");
+        let err = app.recompute().unwrap_err().to_string();
+        assert!(err.contains("function 'sin' must be called with parentheses"));
+    }
+
+    #[test]
+    fn user_message_empty_uses_fallback() {
+        assert_eq!(user_message(""), "Something went wrong");
+        assert_eq!(user_message("   "), "Something went wrong");
+    }
+
+    #[test]
+    fn user_message_non_empty_passthrough() {
+        assert_eq!(user_message("bad input"), "bad input");
+    }
+
+    #[test]
+    fn method_choice_from_index_and_index_roundtrip() {
+        for (i, choice) in MethodChoice::OPTIONS.iter().enumerate() {
+            assert_eq!(MethodChoice::from_index(i), *choice);
+            assert_eq!(choice.index(), i);
+        }
+        assert_eq!(
+            MethodChoice::from_index(99),
+            MethodChoice::OPTIONS[99 % MethodChoice::OPTIONS.len()]
+        );
+    }
+
+    #[test]
+    fn method_choice_methods() {
+        assert_eq!(MethodChoice::Euler.methods(), &[Method::Euler]);
+        assert_eq!(
+            MethodChoice::ImprovedEuler.methods(),
+            &[Method::ImprovedEuler]
+        );
+        assert_eq!(MethodChoice::RungeKutta.methods(), &[Method::RungeKutta]);
+        assert_eq!(MethodChoice::All.methods(), &Method::ALL);
+    }
+
+    #[test]
+    fn focus_next_without_y0_family() {
+        let mut f = Focus::Equation;
+        f = f.next(false);
+        assert_eq!(f, Focus::MethodDropdown);
+        f = f.next(false);
+        assert_eq!(f, Focus::Y0Family);
+        f = f.next(false);
+        assert_eq!(f, Focus::X0);
+        f = f.next(false);
+        assert_eq!(f, Focus::Y0);
+        f = f.next(false);
+        assert_eq!(f, Focus::XEnd);
+    }
+
+    #[test]
+    fn focus_next_with_y0_family_includes_extra_fields() {
+        let mut f = Focus::Y0;
+        f = f.next(true);
+        assert_eq!(f, Focus::Y0End);
+        f = f.next(true);
+        assert_eq!(f, Focus::Y0Count);
+        f = f.next(true);
+        assert_eq!(f, Focus::XEnd);
+    }
+
+    #[test]
+    fn focus_prev_wraps() {
+        assert_eq!(Focus::Equation.prev(false), Focus::ExportButton);
+        assert_eq!(Focus::ExportButton.next(false), Focus::Equation);
+    }
+
+    #[test]
+    fn parse_export_options_valid() {
+        let app = test_app();
+        let (h, n) = app.parse_export_options().unwrap();
+        assert!((h - 0.01).abs() < 1e-12);
+        assert_eq!(n, 100);
+    }
+
+    #[test]
+    fn parse_export_options_rejects_non_positive_h() {
+        let mut app = test_app();
+        app.export_h = TextInput::new("0");
+        let err = app.parse_export_options().unwrap_err().to_string();
+        assert!(err.contains("export h must be positive"));
+    }
+
+    #[test]
+    fn parse_export_options_rejects_zero_points() {
+        let mut app = test_app();
+        app.export_n_points = TextInput::new("0");
+        let err = app.parse_export_options().unwrap_err().to_string();
+        assert!(err.contains("number of points must be at least 1"));
+    }
+}
