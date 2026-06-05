@@ -1,20 +1,48 @@
+//! Significant-figure formatting for exports and chart axis labels.
+
 /// Significant figures used when formatting exported numbers.
 pub const SIGFIGS: usize = 6;
 
 /// Significant figures for graph axis scales and tick labels.
 pub const CHART_SIGFIGS: usize = 3;
 
-/// Format `v` to at most `SIGFIGS` significant figures.
+/// Format `v` to at most [`SIGFIGS`] significant figures.
+///
+/// # Arguments
+///
+/// * `v` - Value to format.
+///
+/// # Returns
+///
+/// A decimal string with trailing zeros trimmed when possible.
 pub fn format_sigfigs(v: f64) -> String {
     format_sigfigs_with(v, SIGFIGS)
 }
 
 /// Format `v` to at most `digits` significant figures.
+///
+/// # Arguments
+///
+/// * `v` - Value to format.
+/// * `digits` - Maximum number of significant figures to keep.
+///
+/// # Returns
+///
+/// A decimal string with trailing zeros trimmed when possible.
 pub fn format_sigfigs_with(v: f64, digits: usize) -> String {
     trim_float(round_sigfigs(v, digits))
 }
 
 /// Round `v` to `digits` significant figures.
+///
+/// # Arguments
+///
+/// * `v` - Value to round. Non-finite values are returned unchanged.
+/// * `digits` - Target number of significant figures.
+///
+/// # Returns
+///
+/// `v` rounded to the requested precision, or `v` itself if it is zero or non-finite.
 pub fn round_sigfigs(v: f64, digits: usize) -> f64 {
     if !v.is_finite() {
         return v;
@@ -29,6 +57,15 @@ pub fn round_sigfigs(v: f64, digits: usize) -> f64 {
 }
 
 /// Snap axis endpoints to `digits` significant figures (min ≤ max).
+///
+/// # Arguments
+///
+/// * `bounds` - Proposed axis endpoints, in any order.
+/// * `digits` - Significant figures used when snapping.
+///
+/// # Returns
+///
+/// `[lo, hi]` with `lo <= hi`. Equal inputs are spread slightly so the axis has width.
 pub fn snap_axis_bounds(bounds: [f64; 2], digits: usize) -> [f64; 2] {
     let mut lo = round_sigfigs(bounds[0].min(bounds[1]), digits);
     let mut hi = round_sigfigs(bounds[0].max(bounds[1]), digits);
@@ -42,7 +79,19 @@ pub fn snap_axis_bounds(bounds: [f64; 2], digits: usize) -> [f64; 2] {
     [lo, hi]
 }
 
-/// Pick y-axis bounds and label precision: prefer 3 sig figs unless that hides curve detail.
+/// Pick y-axis bounds and label precision for chart rendering.
+///
+/// Prefers [`CHART_SIGFIGS`] unless that would collapse distinct data values.
+///
+/// # Arguments
+///
+/// * `padded_bounds` - Axis range after padding around the data.
+/// * `data_y_min` - Minimum y value in the plotted data.
+/// * `data_y_max` - Maximum y value in the plotted data.
+///
+/// # Returns
+///
+/// A tuple of snapped axis bounds and the number of significant figures to use on tick labels.
 pub fn y_axis_display(padded_bounds: [f64; 2], data_y_min: f64, data_y_max: f64) -> ([f64; 2], usize) {
     let data_lo = data_y_min.min(data_y_max);
     let data_hi = data_y_min.max(data_y_max);
@@ -58,6 +107,18 @@ pub fn y_axis_display(padded_bounds: [f64; 2], data_y_min: f64, data_y_max: f64)
     (padded_bounds, digits)
 }
 
+/// Return whether snapped axis bounds still contain the data with readable tick labels.
+///
+/// # Arguments
+///
+/// * `axis` - Candidate snapped axis endpoints.
+/// * `data_lo` - Lower bound of plotted y data.
+/// * `data_hi` - Upper bound of plotted y data.
+/// * `digits` - Significant figures used for label formatting.
+///
+/// # Returns
+///
+/// `true` if the axis is wide enough and labels would distinguish `data_lo` from `data_hi`.
 fn y_axis_precision_ok(axis: [f64; 2], data_lo: f64, data_hi: f64, digits: usize) -> bool {
     let lo = axis[0].min(axis[1]);
     let hi = axis[0].max(axis[1]);
@@ -73,6 +134,17 @@ fn y_axis_precision_ok(axis: [f64; 2], data_lo: f64, data_hi: f64, digits: usize
     true
 }
 
+/// Choose a fallback label precision when snapped bounds cannot be used.
+///
+/// # Arguments
+///
+/// * `span` - `data_hi - data_lo`.
+/// * `data_lo` - Lower bound of plotted y data.
+/// * `data_hi` - Upper bound of plotted y data.
+///
+/// # Returns
+///
+/// Number of significant figures to use on y-axis tick labels.
 fn label_digits_for_span(span: f64, data_lo: f64, data_hi: f64) -> usize {
     if span <= 1e-12 {
         return CHART_SIGFIGS;
@@ -85,6 +157,15 @@ fn label_digits_for_span(span: f64, data_lo: f64, data_hi: f64) -> usize {
     SIGFIGS
 }
 
+/// Format a float and remove cosmetic trailing zeros after the decimal point.
+///
+/// # Arguments
+///
+/// * `v` - Value to format.
+///
+/// # Returns
+///
+/// A compact decimal representation, or scientific notation when `Display` emits it.
 fn trim_float(v: f64) -> String {
     let s = format!("{v}");
     if s.contains('e') || s.contains('E') {

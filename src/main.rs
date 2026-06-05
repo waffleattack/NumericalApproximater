@@ -1,3 +1,5 @@
+//! Terminal entry point: event loop, keyboard handling, and screen setup.
+
 mod app;
 mod export;
 mod expr;
@@ -19,6 +21,17 @@ use crossterm::ExecutableCommand;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
+/// Application entry point.
+///
+/// Initializes the terminal, runs the main loop, and restores the terminal on exit.
+///
+/// # Returns
+///
+/// `Ok(())` when the user quits normally, or an error if terminal I/O fails.
+///
+/// # Errors
+///
+/// Returns any error from terminal setup, drawing, or event polling.
 fn main() -> Result<()> {
     let mut terminal = setup_terminal()?;
     let result = run(&mut terminal);
@@ -26,6 +39,15 @@ fn main() -> Result<()> {
     result
 }
 
+/// Put the terminal into raw mode and enter the alternate screen.
+///
+/// # Returns
+///
+/// A ratatui `Terminal` backed by stdout.
+///
+/// # Errors
+///
+/// Returns an error if raw mode, screen switching, or terminal creation fails.
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -35,6 +57,19 @@ fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
     Ok(Terminal::new(backend)?)
 }
 
+/// Leave alternate screen, disable raw mode, and show the cursor.
+///
+/// # Arguments
+///
+/// * `terminal` - Terminal instance to tear down.
+///
+/// # Returns
+///
+/// `Ok(())` on success.
+///
+/// # Errors
+///
+/// Returns an error if restoring the terminal state fails.
 fn restore_terminal(mut terminal: Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
@@ -42,6 +77,19 @@ fn restore_terminal(mut terminal: Terminal<CrosstermBackend<io::Stdout>>) -> Res
     Ok(())
 }
 
+/// Main event loop: draw the UI and dispatch keyboard input until quit.
+///
+/// # Arguments
+///
+/// * `terminal` - Active ratatui terminal used for rendering.
+///
+/// # Returns
+///
+/// `Ok(())` when the user exits with `q` or Ctrl+C.
+///
+/// # Errors
+///
+/// Returns an error if drawing or reading input fails.
 fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
     let mut app = App::new();
 
@@ -68,6 +116,17 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
     Ok(())
 }
 
+/// Handle a key press in the main (non-modal) UI.
+///
+/// # Arguments
+///
+/// * `app` - Mutable application state.
+/// * `code` - Key that was pressed.
+/// * `_mods` - Modifier keys (currently unused).
+///
+/// # Returns
+///
+/// `true` if the application should exit, `false` otherwise.
 fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) -> bool {
     if app.export_prompt_open {
         return handle_export_prompt(app, code);
@@ -117,6 +176,11 @@ fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) -> bool {
     false
 }
 
+/// Run `recompute` and store any error in the footer status bar.
+///
+/// # Arguments
+///
+/// * `app` - Application state to update with curves or an error message.
 fn recompute_with_feedback(app: &mut App) {
     if let Err(e) = app.recompute() {
         app.error = Some(app::user_message(e));
@@ -124,6 +188,16 @@ fn recompute_with_feedback(app: &mut App) {
     }
 }
 
+/// Handle keyboard input while the export dialog is open.
+///
+/// # Arguments
+///
+/// * `app` - Mutable application state.
+/// * `code` - Key that was pressed.
+///
+/// # Returns
+///
+/// `true` if the application should exit, `false` otherwise.
 fn handle_export_prompt(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Char('q') => return true,
@@ -154,6 +228,12 @@ fn handle_export_prompt(app: &mut App, code: KeyCode) -> bool {
     false
 }
 
+/// Apply an editing key to the currently focused text field.
+///
+/// # Arguments
+///
+/// * `app` - Application state; uses `focus` to select the active `TextInput`.
+/// * `code` - Key that was pressed.
 fn handle_text_input_key(app: &mut App, code: KeyCode) {
     let Some(input) = app.focused_input_mut() else {
         return;
@@ -170,6 +250,16 @@ fn handle_text_input_key(app: &mut App, code: KeyCode) {
     }
 }
 
+/// Handle keyboard input while the method selection menu is open.
+///
+/// # Arguments
+///
+/// * `app` - Mutable application state.
+/// * `code` - Key that was pressed.
+///
+/// # Returns
+///
+/// `true` if the application should exit, `false` otherwise.
 fn handle_method_menu(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Char('q') => return true,

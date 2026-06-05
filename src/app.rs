@@ -1,3 +1,5 @@
+//! Application state: inputs, focus navigation, integration, and export flow.
+
 use anyhow::Result;
 
 use crate::expr::OdeFunction;
@@ -11,6 +13,7 @@ pub const MAX_GRAPH_POINTS: usize = 800;
 /// Cap on simultaneous y₀ initial conditions (per method).
 pub const MAX_Y0_FAMILY: usize = 15;
 
+/// A single numerical integration method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
     Euler,
@@ -21,6 +24,11 @@ pub enum Method {
 impl Method {
     pub const ALL: [Method; 3] = [Method::Euler, Method::ImprovedEuler, Method::RungeKutta];
 
+    /// Short human-readable name for charts and exports.
+    ///
+    /// # Returns
+    ///
+    /// A static label string for this method.
     pub fn short_label(self) -> &'static str {
         match self {
             Method::Euler => "Euler",
@@ -30,6 +38,7 @@ impl Method {
     }
 }
 
+/// User-facing method selection, including an "all methods" option.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MethodChoice {
     Euler,
@@ -46,6 +55,11 @@ impl MethodChoice {
         MethodChoice::All,
     ];
 
+    /// Label shown in the method dropdown.
+    ///
+    /// # Returns
+    ///
+    /// A static menu label for this choice.
     pub fn label(self) -> &'static str {
         match self {
             MethodChoice::Euler => "Euler",
@@ -55,14 +69,33 @@ impl MethodChoice {
         }
     }
 
+    /// Index of this choice in [`Self::OPTIONS`].
+    ///
+    /// # Returns
+    ///
+    /// Position in the dropdown list, or `0` if not found.
     pub fn index(self) -> usize {
         Self::OPTIONS.iter().position(|&m| m == self).unwrap_or(0)
     }
 
+    /// Map a dropdown index back to a [`MethodChoice`].
+    ///
+    /// # Arguments
+    ///
+    /// * `i` - Menu index (wraps modulo the number of options).
+    ///
+    /// # Returns
+    ///
+    /// The corresponding choice.
     pub fn from_index(i: usize) -> Self {
         Self::OPTIONS[i % Self::OPTIONS.len()]
     }
 
+    /// Expand this choice into one or more [`Method`] values to integrate.
+    ///
+    /// # Returns
+    ///
+    /// A slice of methods to run during `recompute`.
     pub fn methods(self) -> &'static [Method] {
         match self {
             MethodChoice::Euler => &[Method::Euler],
@@ -73,6 +106,7 @@ impl MethodChoice {
     }
 }
 
+/// One plotted/exported solution curve with display metadata.
 #[derive(Debug, Clone)]
 pub struct CurveSeries {
     pub method: Method,
@@ -83,6 +117,7 @@ pub struct CurveSeries {
     pub plot_xy: Vec<(f64, f64)>,
 }
 
+/// Keyboard focus target in the main UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
     Equation,
@@ -98,14 +133,37 @@ pub enum Focus {
 }
 
 impl Focus {
+    /// Move focus to the next field in tab order.
+    ///
+    /// # Arguments
+    ///
+    /// * `y0_family` - Whether the extended y₀ family fields are visible.
+    ///
+    /// # Returns
+    ///
+    /// The next focus target, wrapping at the end.
     pub fn next(self, y0_family: bool) -> Self {
         step(self, y0_family, true)
     }
 
+    /// Move focus to the previous field in tab order.
+    ///
+    /// # Arguments
+    ///
+    /// * `y0_family` - Whether the extended y₀ family fields are visible.
+    ///
+    /// # Returns
+    ///
+    /// The previous focus target, wrapping at the start.
     pub fn prev(self, y0_family: bool) -> Self {
         step(self, y0_family, false)
     }
 
+    /// Return whether this focus target is an editable text field.
+    ///
+    /// # Returns
+    ///
+    /// `true` for equation and numeric inputs; `false` for buttons and toggles.
     pub fn is_text_input(self) -> bool {
         !matches!(
             self,
@@ -114,6 +172,17 @@ impl Focus {
     }
 }
 
+/// Advance or retreat one step in the focus ring.
+///
+/// # Arguments
+///
+/// * `from` - Current focus.
+/// * `y0_family` - Whether y₀ end/count fields are in the tab order.
+/// * `forward` - `true` for next, `false` for previous.
+///
+/// # Returns
+///
+/// The new focus value, wrapping at the ends of the ring.
 fn step(from: Focus, y0_family: bool, forward: bool) -> Focus {
     let order: &[Focus] = if y0_family {
         &[
@@ -150,6 +219,7 @@ fn step(from: Focus, y0_family: bool, forward: bool) -> Focus {
     order[next_i]
 }
 
+/// Focus target inside the export dialog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExportPromptFocus {
     Filename,
@@ -164,17 +234,28 @@ impl ExportPromptFocus {
         ExportPromptFocus::NumPoints,
     ];
 
+    /// Next field in the export dialog tab order.
+    ///
+    /// # Returns
+    ///
+    /// The following [`ExportPromptFocus`], wrapping at the end.
     pub fn next(self) -> Self {
         let i = Self::ORDER.iter().position(|&f| f == self).unwrap_or(0);
         Self::ORDER[(i + 1) % Self::ORDER.len()]
     }
 
+    /// Previous field in the export dialog tab order.
+    ///
+    /// # Returns
+    ///
+    /// The preceding [`ExportPromptFocus`], wrapping at the start.
     pub fn prev(self) -> Self {
         let i = Self::ORDER.iter().position(|&f| f == self).unwrap_or(0);
         Self::ORDER[(i + Self::ORDER.len() - 1) % Self::ORDER.len()]
     }
 }
 
+/// Full TUI application state.
 pub struct App {
     pub focus: Focus,
     pub equation: TextInput,
@@ -198,6 +279,20 @@ pub struct App {
     pub status: Option<String>,
 }
 
+/// Parse a sidebar or dialog field as `f64`.
+///
+/// # Arguments
+///
+/// * `input` - Text field to parse.
+/// * `label` - Full error message returned on parse failure.
+///
+/// # Returns
+///
+/// The parsed floating-point value.
+///
+/// # Errors
+///
+/// Returns an error with `label` as the message when parsing fails.
 fn parse_input_f64(input: &TextInput, label: &str) -> Result<f64> {
     input
         .as_str()
@@ -206,6 +301,20 @@ fn parse_input_f64(input: &TextInput, label: &str) -> Result<f64> {
         .map_err(|_| anyhow::anyhow!("{label} must be a number"))
 }
 
+/// Parse a sidebar or dialog field as `usize`.
+///
+/// # Arguments
+///
+/// * `input` - Text field to parse.
+/// * `label` - Full error message returned on parse failure.
+///
+/// # Returns
+///
+/// The parsed unsigned integer.
+///
+/// # Errors
+///
+/// Returns an error with `label` as the message when parsing fails.
 fn parse_input_usize(input: &TextInput, label: &str) -> Result<usize> {
     input
         .as_str()
@@ -215,6 +324,14 @@ fn parse_input_usize(input: &TextInput, label: &str) -> Result<usize> {
 }
 
 /// Format an error for display in the footer status bar.
+///
+/// # Arguments
+///
+/// * `err` - Error value to stringify.
+///
+/// # Returns
+///
+/// The error message, or `"Something went wrong"` if it is empty or whitespace.
 pub fn user_message(err: impl std::fmt::Display) -> String {
     let msg = err.to_string();
     if msg.trim().is_empty() {
@@ -225,6 +342,11 @@ pub fn user_message(err: impl std::fmt::Display) -> String {
 }
 
 impl App {
+    /// Create the application with default demo values and an initial plot.
+    ///
+    /// # Returns
+    ///
+    /// A fully initialized `App`. Integration errors during startup are ignored.
     pub fn new() -> Self {
         let mut app = Self {
             focus: Focus::Equation,
@@ -252,10 +374,16 @@ impl App {
         app
     }
 
+    /// Toggle the y₀ family mode on or off.
     pub fn toggle_y0_family(&mut self) {
         self.y0_family_enabled = !self.y0_family_enabled;
     }
 
+    /// Return the text field that currently has keyboard focus.
+    ///
+    /// # Returns
+    ///
+    /// `None` when focus is on a non-text control (dropdown, toggle, export button).
     pub fn focused_input_mut(&mut self) -> Option<&mut TextInput> {
         match self.focus {
             Focus::Equation => Some(&mut self.equation),
@@ -269,11 +397,17 @@ impl App {
         }
     }
 
+    /// Open the method selection dropdown with the current choice highlighted.
     pub fn open_method_menu(&mut self) {
         self.method_menu_highlight = self.method_choice.index();
         self.method_menu_open = true;
     }
 
+    /// Close the method dropdown, optionally applying the highlighted choice.
+    ///
+    /// # Arguments
+    ///
+    /// * `apply` - When `true`, set `method_choice` from the highlight and recompute.
     pub fn close_method_menu(&mut self, apply: bool) {
         if apply && self.method_menu_open {
             self.method_choice = MethodChoice::from_index(self.method_menu_highlight);
@@ -285,6 +419,7 @@ impl App {
         self.method_menu_open = false;
     }
 
+    /// Move the method menu highlight up, wrapping at the top.
     pub fn method_menu_up(&mut self) {
         if self.method_menu_highlight == 0 {
             self.method_menu_highlight = MethodChoice::OPTIONS.len() - 1;
@@ -293,11 +428,21 @@ impl App {
         }
     }
 
+    /// Move the method menu highlight down, wrapping at the bottom.
     pub fn method_menu_down(&mut self) {
         self.method_menu_highlight =
             (self.method_menu_highlight + 1) % MethodChoice::OPTIONS.len();
     }
 
+    /// Parse sidebar numeric parameters: x₀, y₀, x_end, and h.
+    ///
+    /// # Returns
+    ///
+    /// `(x0, y0, x_end, h)` as `f64` values.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any field is not a valid number.
     pub fn parse_params(&self) -> Result<(f64, f64, f64, f64)> {
         Ok((
             parse_input_f64(&self.x0, "x₀ must be a number")?,
@@ -307,6 +452,16 @@ impl App {
         ))
     }
 
+    /// Build the list of initial y values to integrate.
+    ///
+    /// # Returns
+    ///
+    /// A single-element vector when y₀ family mode is off, otherwise an evenly
+    /// spaced inclusive range between y₀ start and y₀ end.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if parameters are invalid or the count exceeds [`MAX_Y0_FAMILY`].
     pub fn y0_values(&self) -> Result<Vec<f64>> {
         let (_, y0_start, _, _) = self.parse_params()?;
         if !self.y0_family_enabled {
@@ -325,6 +480,17 @@ impl App {
         Ok(linspace_inclusive(y0_start, y0_end, n)?)
     }
 
+    /// Parse the equation and parameters, then integrate all selected curves.
+    ///
+    /// Clears `error` and `status` on entry. On success, replaces `curves`.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when integration completes for every method and y₀ value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if parsing, validation, or integration fails.
     pub fn recompute(&mut self) -> Result<()> {
         self.error = None;
         self.status = None;
@@ -365,6 +531,7 @@ impl App {
         Ok(())
     }
 
+    /// Open the export dialog with defaults copied from the sidebar.
     pub fn open_export_prompt(&mut self) {
         self.export_filename = TextInput::new("ode_export");
         self.export_h = TextInput::new(self.h.as_str());
@@ -374,6 +541,11 @@ impl App {
         self.error = None;
     }
 
+    /// Return the text field that currently has focus in the export dialog.
+    ///
+    /// # Returns
+    ///
+    /// Mutable reference to the active export prompt input.
     pub fn export_prompt_input_mut(&mut self) -> &mut TextInput {
         match self.export_prompt_focus {
             ExportPromptFocus::Filename => &mut self.export_filename,
@@ -382,6 +554,15 @@ impl App {
         }
     }
 
+    /// Parse export step size and point count from the dialog.
+    ///
+    /// # Returns
+    ///
+    /// `(h, n_points)` after validation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `h` is not positive or `n_points` is zero.
     pub fn parse_export_options(&self) -> Result<(f64, usize)> {
         let h = parse_input_f64(&self.export_h, "export h must be a positive number")?;
         if h <= 0.0 {
@@ -397,6 +578,19 @@ impl App {
         Ok((h, n))
     }
 
+    /// Close the export dialog, optionally writing a file.
+    ///
+    /// # Arguments
+    ///
+    /// * `save` - When `true`, validate inputs and call [`crate::export::write_text_file`].
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` after closing the dialog.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `save` is `true` and export validation or I/O fails.
     pub fn close_export_prompt(&mut self, save: bool) -> Result<()> {
         if save && self.export_prompt_open {
             let name = self.export_filename.as_str().trim();

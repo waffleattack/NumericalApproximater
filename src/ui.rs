@@ -1,3 +1,5 @@
+//! Ratatui rendering for the equation bar, sidebar, chart, modals, and footer.
+
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -19,6 +21,15 @@ const COLOR_EULER: Color = Color::Green;
 const COLOR_IMPROVED: Color = Color::Yellow;
 const COLOR_RK: Color = Color::Cyan;
 
+/// Border color for a focusable input field.
+///
+/// # Arguments
+///
+/// * `focused` - Whether the field currently has keyboard focus.
+///
+/// # Returns
+///
+/// `Color::Yellow` when focused, otherwise `Color::DarkGray`.
 fn field_border(focused: bool) -> Color {
     if focused {
         Color::Yellow
@@ -27,6 +38,16 @@ fn field_border(focused: bool) -> Color {
     }
 }
 
+/// Border color for a dropdown trigger or open menu.
+///
+/// # Arguments
+///
+/// * `focused` - Whether the dropdown field has keyboard focus.
+/// * `open` - Whether the dropdown menu is currently visible.
+///
+/// # Returns
+///
+/// `Color::Yellow` when focused or open, otherwise `Color::DarkGray`.
 fn dropdown_border(focused: bool, open: bool) -> Color {
     if focused || open {
         Color::Yellow
@@ -35,6 +56,12 @@ fn dropdown_border(focused: bool, open: bool) -> Color {
     }
 }
 
+/// Render the full application layout into the terminal frame.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame for the current draw pass.
+/// * `app` - Application state to display.
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
     let root = Layout::default()
@@ -59,6 +86,15 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
 }
 
+/// Styled block for modal dialogs (black background, white text).
+///
+/// # Arguments
+///
+/// * `title` - Title text shown in the block border.
+///
+/// # Returns
+///
+/// A configured [`Block`] widget.
 fn modal_block(title: &str) -> Block<'_> {
     Block::default()
         .borders(Borders::ALL)
@@ -67,6 +103,11 @@ fn modal_block(title: &str) -> Block<'_> {
 }
 
 /// Solid black fill for modal interiors (graph remains visible outside).
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Screen region to fill; no-op when width or height is zero.
 fn fill_black(frame: &mut Frame, area: Rect) {
     if area.width == 0 || area.height == 0 {
         return;
@@ -75,6 +116,13 @@ fn fill_black(frame: &mut Frame, area: Rect) {
     frame.render_widget(block, area);
 }
 
+/// Draw the top equation input bar (`y' = …`).
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Layout region for the bar.
+/// * `app` - Application state (equation text and focus).
 fn draw_equation_bar(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focus == Focus::Equation;
     let block = Block::default()
@@ -98,7 +146,17 @@ fn draw_equation_bar(frame: &mut Frame, area: Rect, app: &App) {
     );
 }
 
-/// Renders editable text with a highlighted cursor; sets terminal cursor when `focused`.
+/// Render editable text with a highlighted cursor; sets terminal cursor when `focused`.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Inner region for the text.
+/// * `input` - Text buffer and cursor position.
+/// * `focused` - Whether this field is active (cursor highlight and terminal cursor).
+/// * `prefix` - Optional static prefix (e.g. `y' = `) shown before the value.
+/// * `suffix` - Optional hint text shown after the value in dark gray.
+/// * `on_black` - Use white-on-black styling when not focused (modal fields).
 fn render_text_input(
     frame: &mut Frame,
     area: Rect,
@@ -159,6 +217,13 @@ fn render_text_input(
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
+/// Draw the main body: sidebar controls and chart panel.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Layout region below the equation bar.
+/// * `app` - Application state.
 fn draw_body(frame: &mut Frame, area: Rect, app: &App) {
     let cols = Layout::default()
         .direction(Direction::Horizontal)
@@ -169,6 +234,13 @@ fn draw_body(frame: &mut Frame, area: Rect, app: &App) {
     draw_chart_panel(frame, cols[1], app);
 }
 
+/// Draw the left sidebar with method, ICs, step size, legend, and export.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Sidebar layout region.
+/// * `app` - Application state.
 fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     let mut constraints = vec![
         Constraint::Length(3), // method
@@ -232,6 +304,13 @@ fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     draw_export_button(frame, rows[i], app.focus == Focus::ExportButton);
 }
 
+/// Draw the y₀ family on/off toggle control.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Layout region for the toggle.
+/// * `app` - Application state (`y0_family_enabled` and focus).
 fn draw_y0_family_toggle(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focus == Focus::Y0Family;
     let on = app.y0_family_enabled;
@@ -259,6 +338,13 @@ fn draw_y0_family_toggle(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(label).style(style), inner);
 }
 
+/// Draw the export action button in the sidebar.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Layout region for the button.
+/// * `focused` - Whether the export button has keyboard focus.
 fn draw_export_button(frame: &mut Frame, area: Rect, focused: bool) {
     let style = if focused {
         Style::default()
@@ -282,6 +368,12 @@ fn draw_export_button(frame: &mut Frame, area: Rect, focused: bool) {
     frame.render_widget(Paragraph::new(label).style(style), inner);
 }
 
+/// Draw the centered export dialog (filename, step size, point count).
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `app` - Application state (export fields and focus).
 fn draw_export_prompt(frame: &mut Frame, app: &App) {
     let area = centered_rect(52, 15, frame.area());
     // Clear only the dialog region so the graph stays visible around it.
@@ -331,6 +423,15 @@ fn draw_export_prompt(frame: &mut Frame, app: &App) {
     );
 }
 
+/// Draw a labeled text field inside the export dialog.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Layout region for this field.
+/// * `label` - Field title shown in the border.
+/// * `input` - Editable text buffer.
+/// * `focused` - Whether this field is the active export prompt field.
 fn draw_prompt_field(
     frame: &mut Frame,
     area: Rect,
@@ -349,6 +450,15 @@ fn draw_prompt_field(
     render_text_input(frame, inner, input, focused, None, None, true);
 }
 
+/// Build sidebar legend text describing visible curves.
+///
+/// # Arguments
+///
+/// * `app` - Application state (`curves`, `y0_family_enabled`, `method_choice`).
+///
+/// # Returns
+///
+/// A short legend string, or empty when no legend is needed.
 fn legend_text(app: &App) -> String {
     if app.y0_family_enabled {
         return format!("{} y₀ curves", app.curves.len());
@@ -363,6 +473,16 @@ fn legend_text(app: &App) -> String {
         .join("  ")
 }
 
+/// Draw a closed dropdown showing the current value and arrow.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Layout region for the trigger.
+/// * `title` - Field label in the border.
+/// * `value` - Currently selected option text.
+/// * `focused` - Whether the dropdown has keyboard focus.
+/// * `open` - Whether the menu is expanded (shows ▲ instead of ▼).
 fn draw_dropdown_trigger(
     frame: &mut Frame,
     area: Rect,
@@ -387,6 +507,12 @@ fn draw_dropdown_trigger(
     frame.render_widget(Paragraph::new(text).style(style), inner);
 }
 
+/// Draw the method selection list overlay.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `app` - Application state (`method_menu_highlight`, `method_menu_open`).
 fn draw_method_dropdown(frame: &mut Frame, app: &App) {
     let area = centered_rect(36, 8, frame.area());
     frame.render_widget(Clear, area);
@@ -419,6 +545,17 @@ fn draw_method_dropdown(frame: &mut Frame, app: &App) {
     frame.render_widget(list, area);
 }
 
+/// Compute a rectangle centered within `area`, clamped to its bounds.
+///
+/// # Arguments
+///
+/// * `width` - Desired width in terminal cells.
+/// * `height` - Desired height in terminal cells.
+/// * `area` - Parent region to center within.
+///
+/// # Returns
+///
+/// A [`Rect`] no larger than `area`, centered horizontally and vertically.
 fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     let width = width.min(area.width);
     let height = height.min(area.height);
@@ -427,6 +564,15 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     Rect::new(x, y, width, height)
 }
 
+/// Draw a labeled numeric/text sidebar input field.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Layout region for the field.
+/// * `label` - Field title in the border.
+/// * `input` - Editable text buffer.
+/// * `focused` - Whether this field has keyboard focus.
 fn draw_sidebar_field(
     frame: &mut Frame,
     area: Rect,
@@ -443,6 +589,13 @@ fn draw_sidebar_field(
     render_text_input(frame, inner, input, focused, None, None, false);
 }
 
+/// Draw the right-hand chart panel or placeholder messages.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Layout region for the chart.
+/// * `app` - Application state (`curves`, `method_choice`).
 fn draw_chart_panel(frame: &mut Frame, area: Rect, app: &App) {
     if app.curves.is_empty() {
         let msg = Paragraph::new("Enter a valid F(x,y) and press Enter to plot.")
@@ -465,6 +618,13 @@ fn draw_chart_panel(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
+/// Draw one stacked chart per integration method (All mode).
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Layout region split vertically by method.
+/// * `curves` - Curve series to partition by [`Method`].
 fn draw_split_by_method(frame: &mut Frame, area: Rect, curves: &[CurveSeries]) {
     let n = Method::ALL.len() as u32;
     let rows = Layout::default()
@@ -482,6 +642,15 @@ fn draw_split_by_method(frame: &mut Frame, area: Rect, curves: &[CurveSeries]) {
     }
 }
 
+/// Primary chart color for a single integration method.
+///
+/// # Arguments
+///
+/// * `method` - Euler, improved Euler, or Runge–Kutta.
+///
+/// # Returns
+///
+/// The method's default line color.
 fn method_color(method: Method) -> Color {
     match method {
         Method::Euler => COLOR_EULER,
@@ -490,6 +659,14 @@ fn method_color(method: Method) -> Color {
     }
 }
 
+/// Render a Braille line chart for one or more curve series.
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Layout region for the chart.
+/// * `curves` - Series to plot (shared axes from all points).
+/// * `title` - Chart title in the border.
 fn render_curves_chart(frame: &mut Frame, area: Rect, curves: &[&CurveSeries], title: &str) {
     let all_points: Vec<&Point> = curves.iter().flat_map(|c| c.points.iter()).collect();
     let (x_min, x_max, y_min, y_max) = bounds_multi(&all_points);
@@ -545,6 +722,17 @@ fn render_curves_chart(frame: &mut Frame, area: Rect, curves: &[&CurveSeries], t
     frame.render_widget(chart, area);
 }
 
+/// Line color for a curve in a y₀ family (palette by method and index).
+///
+/// # Arguments
+///
+/// * `method` - Integration method for the curve.
+/// * `index` - Zero-based index within the family.
+/// * `total` - Total curves in the family; `1` uses the method's primary color.
+///
+/// # Returns
+///
+/// A distinct color from the method's palette.
 fn family_color(method: Method, index: usize, total: usize) -> Color {
     if total <= 1 {
         return method_color(method);
@@ -575,6 +763,15 @@ fn family_color(method: Method, index: usize, total: usize) -> Color {
     palette[index % palette.len()]
 }
 
+/// Compute axis-aligned min/max bounds over multiple points.
+///
+/// # Arguments
+///
+/// * `points` - Non-empty slice of point references.
+///
+/// # Returns
+///
+/// `(x_min, x_max, y_min, y_max)`.
 fn bounds_multi(points: &[&Point]) -> (f64, f64, f64, f64) {
     let first = points[0];
     let mut x_min = first.x;
@@ -590,6 +787,16 @@ fn bounds_multi(points: &[&Point]) -> (f64, f64, f64, f64) {
     (x_min, x_max, y_min, y_max)
 }
 
+/// Build three axis tick labels (min, mid, max) with fixed significant figures.
+///
+/// # Arguments
+///
+/// * `bounds` - Axis range `[min, max]`.
+/// * `digits` - Significant figures for each label.
+///
+/// # Returns
+///
+/// Three styled [`Span`] labels for the chart axis.
 fn tick_labels(bounds: [f64; 2], digits: usize) -> Vec<Span<'static>> {
     let [a, b] = bounds;
     [a, (a + b) / 2.0, b]
@@ -598,10 +805,26 @@ fn tick_labels(bounds: [f64; 2], digits: usize) -> Vec<Span<'static>> {
         .collect()
 }
 
+/// Build x-axis tick labels using the default chart precision.
+///
+/// # Arguments
+///
+/// * `bounds` - x-axis range `[min, max]`.
+///
+/// # Returns
+///
+/// Three tick labels at [`CHART_SIGFIGS`] precision.
 fn tick_labels_x(bounds: [f64; 2]) -> Vec<Span<'static>> {
     tick_labels(bounds, CHART_SIGFIGS)
 }
 
+/// Draw the bottom status bar (errors, success, or default key hints).
+///
+/// # Arguments
+///
+/// * `frame` - Ratatui frame to draw into.
+/// * `area` - Layout region for the footer.
+/// * `app` - Application state (`error`, `status`).
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
     let (msg, color, title) = if let Some(err) = &app.error {
         (

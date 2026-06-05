@@ -1,3 +1,5 @@
+//! Parse and evaluate the ODE right-hand side F(x, y) from user-facing math notation.
+
 use std::cell::RefCell;
 
 use anyhow::{Context, Result};
@@ -12,6 +14,19 @@ pub struct OdeFunction {
 }
 
 impl OdeFunction {
+    /// Parse and compile a user equation into an evaluable function.
+    ///
+    /// # Arguments
+    ///
+    /// * `raw` - Right-hand side text, optionally prefixed with `y' =` or `dy/dx =`.
+    ///
+    /// # Returns
+    ///
+    /// A compiled [`OdeFunction`] ready for repeated evaluation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on empty input, validation failure, or evalexpr syntax errors.
     pub fn parse(raw: &str) -> Result<Self> {
         let normalized = normalize_expression(raw)?;
         let tree = build_operator_tree(&normalized)
@@ -23,12 +38,39 @@ impl OdeFunction {
     }
 
     /// Check that F(x, y) evaluates at a point (catches domain errors near IC).
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - x coordinate to test.
+    /// * `y` - y coordinate to test.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when evaluation succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if evaluation fails, with context `invalid at x=…, y=…`.
     pub fn validate_at(&self, x: f64, y: f64) -> Result<()> {
         self.eval(x, y)
             .map(|_| ())
             .with_context(|| format!("invalid at x={x}, y={y}"))
     }
 
+    /// Evaluate F(x, y) at a point.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Independent variable value.
+    /// * `y` - Dependent variable value.
+    ///
+    /// # Returns
+    ///
+    /// The numeric value of the expression.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if evaluation fails or the result is not a number.
     pub fn eval(&self, x: f64, y: f64) -> Result<f64> {
         let mut ctx = self.ctx.borrow_mut();
         ctx.set_value("x".into(), Value::from(x))?;
@@ -39,11 +81,35 @@ impl OdeFunction {
     }
 }
 
+/// Convert an evalexpr error into an anyhow error for display.
+///
+/// # Arguments
+///
+/// * `e` - Error from the evalexpr evaluator.
+///
+/// # Returns
+///
+/// An anyhow error with the same message.
 fn map_eval_error(e: EvalexprError) -> anyhow::Error {
     anyhow::anyhow!("{e}")
 }
 
 /// Prepare user-facing math notation for evalexpr.
+///
+/// Strips equation prefixes, validates tokens, maps functions, and inserts
+/// implicit multiplication (e.g. `2y` → `2*y`).
+///
+/// # Arguments
+///
+/// * `raw` - User-entered right-hand side or full equation.
+///
+/// # Returns
+///
+/// Normalized expression string understood by evalexpr.
+///
+/// # Errors
+///
+/// Returns an error on empty input, validation failure, or tokenization errors.
 pub fn normalize_expression(raw: &str) -> Result<String> {
     let s = strip_equation_lhs(raw.trim());
     anyhow::ensure!(!s.is_empty(), "equation cannot be empty");
@@ -53,6 +119,14 @@ pub fn normalize_expression(raw: &str) -> Result<String> {
 }
 
 /// Remove optional `y' =` / `dy/dx =` prefix if the user pasted the whole equation.
+///
+/// # Arguments
+///
+/// * `s` - Trimmed equation or right-hand side text.
+///
+/// # Returns
+///
+/// The right-hand side substring, or `s` unchanged when no prefix matches.
 fn strip_equation_lhs(s: &str) -> &str {
     strip_dy_dx_prefix(s)
         .or_else(|| strip_y_prime_prefix(s))
@@ -60,6 +134,15 @@ fn strip_equation_lhs(s: &str) -> &str {
         .trim()
 }
 
+/// Strip a leading `dy/dx =` (case-insensitive) prefix.
+///
+/// # Arguments
+///
+/// * `s` - Input text.
+///
+/// # Returns
+///
+/// The substring after `=` when the prefix matches, otherwise `None`.
 fn strip_dy_dx_prefix(s: &str) -> Option<&str> {
     let s = s.trim_start();
     let bytes = s.as_bytes();
@@ -83,6 +166,15 @@ fn strip_dy_dx_prefix(s: &str) -> Option<&str> {
     rest.strip_prefix('=').map(str::trim)
 }
 
+/// Strip a leading `y' =` / `y′ =` prefix.
+///
+/// # Arguments
+///
+/// * `s` - Input text.
+///
+/// # Returns
+///
+/// The substring after `=` when the prefix matches, otherwise `None`.
 fn strip_y_prime_prefix(s: &str) -> Option<&str> {
     let s = s.trim_start();
     let mut chars = s.char_indices();
@@ -104,6 +196,15 @@ const FUNCTIONS: &[&str] = &[
     "ln", "log", "exp", "sqrt", "abs", "floor", "ceil", "round", "min", "max", "pow",
 ];
 
+/// Return whether `name` is a supported math function.
+///
+/// # Arguments
+///
+/// * `name` - Identifier text, optionally prefixed with `math::`.
+///
+/// # Returns
+///
+/// `true` if the base name matches a known function.
 fn is_function_name(name: &str) -> bool {
     let base = name.rsplit("::").next().unwrap_or(name);
     FUNCTIONS
@@ -111,6 +212,15 @@ fn is_function_name(name: &str) -> bool {
         .any(|f| f.eq_ignore_ascii_case(base))
 }
 
+/// Return whether `name` is a legal bare identifier in user input.
+///
+/// # Arguments
+///
+/// * `name` - Identifier token text.
+///
+/// # Returns
+///
+/// `true` for `x`, `y`, `e`, and known function names.
 fn is_allowed_identifier(name: &str) -> bool {
     name.eq_ignore_ascii_case("x")
         || name.eq_ignore_ascii_case("y")
@@ -119,6 +229,18 @@ fn is_allowed_identifier(name: &str) -> bool {
 }
 
 /// Reject unknown names and other structural issues before evalexpr parsing.
+///
+/// # Arguments
+///
+/// * `s` - Right-hand side after prefix stripping.
+///
+/// # Returns
+///
+/// `Ok(())` when tokenization and syntax rules pass.
+///
+/// # Errors
+///
+/// Returns a `parse error: …` message on failure.
 fn validate_expression(s: &str) -> Result<()> {
     let tokens = tokenize(s)?;
     let mut paren_depth = 0i32;
@@ -150,6 +272,15 @@ fn validate_expression(s: &str) -> Result<()> {
     Ok(())
 }
 
+/// Return whether a token can end a mathematical operand.
+///
+/// # Arguments
+///
+/// * `tok` - Optional token to test.
+///
+/// # Returns
+///
+/// `true` for numbers, identifiers, and closing parentheses.
 fn is_operand_end(tok: Option<&Token>) -> bool {
     matches!(
         tok,
@@ -160,6 +291,15 @@ fn is_operand_end(tok: Option<&Token>) -> bool {
     )
 }
 
+/// Return whether a token can start a mathematical operand.
+///
+/// # Arguments
+///
+/// * `tok` - Optional token to test.
+///
+/// # Returns
+///
+/// `true` for numbers, identifiers, and opening parentheses.
 fn is_operand_start(tok: Option<&Token>) -> bool {
     match tok {
         Some(Token {
@@ -176,6 +316,18 @@ fn is_operand_start(tok: Option<&Token>) -> bool {
 }
 
 /// Catch token sequences that are syntactically tokenizable but not valid math.
+///
+/// # Arguments
+///
+/// * `tokens` - Token stream from [`tokenize`].
+///
+/// # Returns
+///
+/// `Ok(())` when operator and function-call rules are satisfied.
+///
+/// # Errors
+///
+/// Returns a descriptive `parse error: …` message on failure.
 fn validate_syntax(tokens: &[Token]) -> Result<()> {
     for (i, tok) in tokens.iter().enumerate() {
         if tok.kind == TokenKind::Ident && is_function_name(&tok.text) {
@@ -243,7 +395,15 @@ fn validate_syntax(tokens: &[Token]) -> Result<()> {
     Ok(())
 }
 
-/// `xy` → `x`, `y` (implicit multiplication between variables).
+/// Split a name made only of `x`/`y` into separate single-letter identifiers.
+///
+/// # Arguments
+///
+/// * `name` - Identifier token text.
+///
+/// # Returns
+///
+/// `Some(vec!["x", "y", …])` for products like `xy`, otherwise `None`.
 fn split_xy_product(name: &str) -> Option<Vec<String>> {
     if name.len() <= 1 {
         return None;
@@ -264,6 +424,15 @@ fn split_xy_product(name: &str) -> Option<Vec<String>> {
     None
 }
 
+/// Rewrite function names to evalexpr `math::` calls and normalize `e`.
+///
+/// # Arguments
+///
+/// * `s` - Validated right-hand side text.
+///
+/// # Returns
+///
+/// Expression string with functions mapped for evalexpr.
 fn map_math_functions(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 16);
     let bytes = s.as_bytes();
@@ -292,6 +461,7 @@ fn map_math_functions(s: &str) -> String {
     out
 }
 
+/// Lexer token category.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TokenKind {
     Number,
@@ -301,12 +471,26 @@ enum TokenKind {
     RParen,
 }
 
+/// Single lexer token with kind and source text.
 #[derive(Debug, Clone)]
 struct Token {
     kind: TokenKind,
     text: String,
 }
 
+/// Lex a math expression into numbers, identifiers, operators, and parentheses.
+///
+/// # Arguments
+///
+/// * `s` - Expression text.
+///
+/// # Returns
+///
+/// Token stream in left-to-right order.
+///
+/// # Errors
+///
+/// Returns `parse error: unexpected character …` for illegal symbols.
 fn tokenize(s: &str) -> Result<Vec<Token>> {
     let mut tokens = Vec::new();
     let bytes = s.as_bytes();
@@ -406,14 +590,42 @@ fn tokenize(s: &str) -> Result<Vec<Token>> {
     Ok(tokens)
 }
 
+/// Return whether a token kind can end an implicit-multiplication left factor.
+///
+/// # Arguments
+///
+/// * `kind` - Token category to test.
+///
+/// # Returns
+///
+/// `true` for numbers, identifiers, and closing parentheses.
 fn ends_factor(kind: TokenKind) -> bool {
     matches!(kind, TokenKind::Number | TokenKind::Ident | TokenKind::RParen)
 }
 
+/// Return whether a token kind can start an implicit-multiplication right factor.
+///
+/// # Arguments
+///
+/// * `kind` - Token category to test.
+///
+/// # Returns
+///
+/// `true` for numbers, identifiers, and opening parentheses.
 fn starts_factor(kind: TokenKind) -> bool {
     matches!(kind, TokenKind::Number | TokenKind::Ident | TokenKind::LParen)
 }
 
+/// Return whether to insert `*` between two adjacent tokens.
+///
+/// # Arguments
+///
+/// * `prev` - Token on the left.
+/// * `curr` - Token on the right.
+///
+/// # Returns
+///
+/// `true` when implicit multiplication should be inserted.
 fn needs_implicit_mult(prev: &Token, curr: &Token) -> bool {
     if !ends_factor(prev.kind) || !starts_factor(curr.kind) {
         return false;
@@ -424,6 +636,19 @@ fn needs_implicit_mult(prev: &Token, curr: &Token) -> bool {
     true
 }
 
+/// Insert `*` between tokens that require implicit multiplication.
+///
+/// # Arguments
+///
+/// * `s` - Function-mapped expression text.
+///
+/// # Returns
+///
+/// Expression string with explicit `*` operators added.
+///
+/// # Errors
+///
+/// Propagates errors from [`tokenize`].
 fn insert_implicit_multiplication(s: &str) -> Result<String> {
     let tokens = tokenize(s)?;
     if tokens.is_empty() {

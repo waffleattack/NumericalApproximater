@@ -1,3 +1,5 @@
+//! Write integrated solution curves to text files under `exported/`.
+
 use std::fs::{create_dir_all, File};
 use std::io::Write;
 use std::path::PathBuf;
@@ -11,6 +13,29 @@ use crate::solver::{integrate, subsample, Point};
 
 const EXPORT_DIR: &str = "exported";
 
+/// Integrate and write solution data to `exported/{filename}.txt`.
+///
+/// # Arguments
+///
+/// * `equation` - Raw equation string shown in the file header.
+/// * `f` - Parsed ODE right-hand side.
+/// * `choice` - Which numerical method(s) to export.
+/// * `x0` - Initial x value.
+/// * `y0_values` - Initial y values (one curve per value).
+/// * `x_end` - Integration endpoint.
+/// * `h` - Export step size (must be positive).
+/// * `n_points` - Number of points to subsample per curve.
+/// * `filename` - Base filename without path (sanitized before use).
+/// * `y0_family` - Whether the header should show a y₀ range.
+///
+/// # Returns
+///
+/// Absolute path to the created `.txt` file.
+///
+/// # Errors
+///
+/// Returns an error if the filename is empty after sanitization, `h <= 0`,
+/// directory creation fails, or integration/subsampling fails.
 pub fn write_text_file(
     equation: &str,
     f: &OdeFunction,
@@ -82,6 +107,16 @@ pub fn write_text_file(
     Ok(path)
 }
 
+/// Format one exported line: `label: (x, y), (x, y), ...`.
+///
+/// # Arguments
+///
+/// * `label` - Method name (and optional y₀ annotation).
+/// * `points` - Subsampled points to include.
+///
+/// # Returns
+///
+/// A single line of comma-separated coordinate pairs.
 fn format_method_line(label: &str, points: &[Point]) -> String {
     let pairs = points
         .iter()
@@ -91,6 +126,15 @@ fn format_method_line(label: &str, points: &[Point]) -> String {
     format!("{label}: {pairs}")
 }
 
+/// Reduce a user-provided name to safe ASCII for use as a filename stem.
+///
+/// # Arguments
+///
+/// * `raw` - User input, optionally ending in `.txt`.
+///
+/// # Returns
+///
+/// Alphanumeric characters, underscores, and hyphens only. May be empty.
 pub(crate) fn sanitize_filename(raw: &str) -> String {
     let trimmed = raw.trim();
     let without_ext = trimmed.strip_suffix(".txt").unwrap_or(trimmed);

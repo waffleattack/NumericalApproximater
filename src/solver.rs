@@ -1,8 +1,11 @@
+//! Fixed-step ODE integrators and point-sampling helpers.
+
 use anyhow::{bail, Result};
 
 use crate::app::Method;
 use crate::expr::OdeFunction;
 
+/// A single `(x, y)` sample along a solution curve.
 #[derive(Debug, Clone)]
 pub struct Point {
     pub x: f64,
@@ -10,7 +13,25 @@ pub struct Point {
 }
 
 /// Integrate y' = F(x,y) from `x0` to `x_end` with fixed step size `h`.
-/// The last step may be shorter so the final point lands on `x_end`.
+///
+/// The last step may be shorter so the final point lands exactly on `x_end`.
+///
+/// # Arguments
+///
+/// * `f` - Parsed right-hand side F(x, y).
+/// * `method` - Numerical method to use.
+/// * `x0` - Initial x value.
+/// * `y0` - Initial y value.
+/// * `x_end` - Target x value (must be greater than `x0`).
+/// * `h` - Fixed step size (must be positive).
+///
+/// # Returns
+///
+/// Sampled points starting at `(x0, y0)` and ending at `x_end`.
+///
+/// # Errors
+///
+/// Returns an error if `h <= 0`, `x_end <= x0`, or evaluation fails during stepping.
 pub fn integrate(
     f: &OdeFunction,
     method: Method,
@@ -43,6 +64,23 @@ pub fn integrate(
     Ok(points)
 }
 
+/// Advance one step with the chosen integration method.
+///
+/// # Arguments
+///
+/// * `f` - ODE right-hand side.
+/// * `method` - Integrator to apply.
+/// * `x` - Current x coordinate.
+/// * `y` - Current y value.
+/// * `h` - Step size for this advance.
+///
+/// # Returns
+///
+/// The y value at `x + h`.
+///
+/// # Errors
+///
+/// Returns an error if `f.eval` fails during the step.
 fn advance(f: &OdeFunction, method: Method, x: f64, y: f64, h: f64) -> Result<f64> {
     match method {
         Method::Euler => euler(f, x, y, h),
@@ -51,12 +89,42 @@ fn advance(f: &OdeFunction, method: Method, x: f64, y: f64, h: f64) -> Result<f6
     }
 }
 
-/// y_{n+1} = y_n + h * f(x_n, y_n)
+/// Explicit Euler step: y_{n+1} = y_n + h * f(x_n, y_n).
+///
+/// # Arguments
+///
+/// * `f` - ODE right-hand side.
+/// * `x` - Current x coordinate.
+/// * `y` - Current y value.
+/// * `h` - Step size.
+///
+/// # Returns
+///
+/// The y value after one Euler step.
+///
+/// # Errors
+///
+/// Returns an error if `f.eval` fails.
 fn euler(f: &OdeFunction, x: f64, y: f64, h: f64) -> Result<f64> {
     Ok(y + h * f.eval(x, y)?)
 }
 
-/// Heun's method (predictor-corrector average)
+/// Heun / improved Euler step (predictor-corrector average).
+///
+/// # Arguments
+///
+/// * `f` - ODE right-hand side.
+/// * `x` - Current x coordinate.
+/// * `y` - Current y value.
+/// * `h` - Step size.
+///
+/// # Returns
+///
+/// The y value after one improved Euler step.
+///
+/// # Errors
+///
+/// Returns an error if `f.eval` fails.
 fn improved_euler(f: &OdeFunction, x: f64, y: f64, h: f64) -> Result<f64> {
     let k1 = f.eval(x, y)?;
     let y_pred = y + h * k1;
@@ -64,7 +132,22 @@ fn improved_euler(f: &OdeFunction, x: f64, y: f64, h: f64) -> Result<f64> {
     Ok(y + h * (k1 + k2) / 2.0)
 }
 
-/// Classical fourth-order Runge-Kutta
+/// Classical fourth-order Runge-Kutta step (RK4).
+///
+/// # Arguments
+///
+/// * `f` - ODE right-hand side.
+/// * `x` - Current x coordinate.
+/// * `y` - Current y value.
+/// * `h` - Step size.
+///
+/// # Returns
+///
+/// The y value after one RK4 step.
+///
+/// # Errors
+///
+/// Returns an error if `f.eval` fails.
 fn runge_kutta4(f: &OdeFunction, x: f64, y: f64, h: f64) -> Result<f64> {
     let k1 = f.eval(x, y)?;
     let k2 = f.eval(x + h / 2.0, y + h * k1 / 2.0)?;
@@ -74,6 +157,15 @@ fn runge_kutta4(f: &OdeFunction, x: f64, y: f64, h: f64) -> Result<f64> {
 }
 
 /// Map `sample_count` evenly spaced indices into `0..=item_count - 1`.
+///
+/// # Arguments
+///
+/// * `item_count` - Length of the source sequence (must be > 0).
+/// * `sample_count` - Number of indices to produce (must be > 0).
+///
+/// # Returns
+///
+/// Rounded indices spanning first to last element, inclusive.
 fn evenly_spaced_indices(item_count: usize, sample_count: usize) -> Vec<usize> {
     debug_assert!(item_count > 0);
     debug_assert!(sample_count > 0);
@@ -90,6 +182,19 @@ fn evenly_spaced_indices(item_count: usize, sample_count: usize) -> Vec<usize> {
 }
 
 /// Pick `n` points evenly spaced along an integrated curve.
+///
+/// # Arguments
+///
+/// * `points` - Full integration output (must be non-empty).
+/// * `n` - Desired number of output points (must be at least 1).
+///
+/// # Returns
+///
+/// A subsequence of `points` with length `min(n, points.len())`.
+///
+/// # Errors
+///
+/// Returns an error if `n == 0` or `points` is empty.
 pub fn subsample(points: &[Point], n: usize) -> Result<Vec<Point>> {
     if n == 0 {
         bail!("number of points must be at least 1");
@@ -111,7 +216,21 @@ pub fn subsample(points: &[Point], n: usize) -> Result<Vec<Point>> {
     Ok(out)
 }
 
-/// `n` evenly spaced values from `start` through `end` (inclusive).
+/// Produce `n` evenly spaced values from `start` through `end` (inclusive).
+///
+/// # Arguments
+///
+/// * `start` - First value in the sequence.
+/// * `end` - Last value in the sequence.
+/// * `n` - Number of values to produce (must be at least 1).
+///
+/// # Returns
+///
+/// `n` evenly spaced floats. When `n == 1`, the result is `[start]`.
+///
+/// # Errors
+///
+/// Returns an error if `n == 0`.
 pub fn linspace_inclusive(start: f64, end: f64, n: usize) -> Result<Vec<f64>> {
     if n == 0 {
         bail!("need at least one y₀ value");
@@ -124,6 +243,15 @@ pub fn linspace_inclusive(start: f64, end: f64, n: usize) -> Result<Vec<f64>> {
 }
 
 /// Cap points used for plotting so very small `h` stays responsive.
+///
+/// # Arguments
+///
+/// * `points` - Full integration output.
+/// * `max` - Maximum number of `(x, y)` pairs to return.
+///
+/// # Returns
+///
+/// All points when `points.len() <= max`, otherwise `max` evenly spaced samples.
 pub fn subsample_plot(points: &[Point], max: usize) -> Vec<(f64, f64)> {
     if points.len() <= max {
         return points.iter().map(|p| (p.x, p.y)).collect();
