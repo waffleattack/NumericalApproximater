@@ -73,6 +73,22 @@ fn runge_kutta4(f: &OdeFunction, x: f64, y: f64, h: f64) -> Result<f64> {
     Ok(y + h * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0)
 }
 
+/// Map `sample_count` evenly spaced indices into `0..=item_count - 1`.
+fn evenly_spaced_indices(item_count: usize, sample_count: usize) -> Vec<usize> {
+    debug_assert!(item_count > 0);
+    debug_assert!(sample_count > 0);
+    if sample_count == 1 {
+        return vec![0];
+    }
+    let last = item_count - 1;
+    (0..sample_count)
+        .map(|i| {
+            let t = i as f64 / (sample_count - 1) as f64;
+            (t * last as f64).round() as usize
+        })
+        .collect()
+}
+
 /// Pick `n` points evenly spaced along an integrated curve.
 pub fn subsample(points: &[Point], n: usize) -> Result<Vec<Point>> {
     if n == 0 {
@@ -88,11 +104,8 @@ pub fn subsample(points: &[Point], n: usize) -> Result<Vec<Point>> {
         return Ok(points.to_vec());
     }
 
-    let last = points.len() - 1;
     let mut out = Vec::with_capacity(n);
-    for i in 0..n {
-        let t = i as f64 / (n - 1) as f64;
-        let idx = (t * last as f64).round() as usize;
+    for idx in evenly_spaced_indices(points.len(), n) {
         out.push(points[idx].clone());
     }
     Ok(out)
@@ -115,11 +128,8 @@ pub fn subsample_plot(points: &[Point], max: usize) -> Vec<(f64, f64)> {
     if points.len() <= max {
         return points.iter().map(|p| (p.x, p.y)).collect();
     }
-    let last = points.len() - 1;
     let mut out = Vec::with_capacity(max);
-    for i in 0..max {
-        let t = i as f64 / (max - 1) as f64;
-        let idx = (t * last as f64).round() as usize;
+    for idx in evenly_spaced_indices(points.len(), max) {
         let p = &points[idx];
         out.push((p.x, p.y));
     }

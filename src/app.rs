@@ -198,6 +198,22 @@ pub struct App {
     pub status: Option<String>,
 }
 
+fn parse_input_f64(input: &TextInput, label: &str) -> Result<f64> {
+    input
+        .as_str()
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("{label} must be a number"))
+}
+
+fn parse_input_usize(input: &TextInput, label: &str) -> Result<usize> {
+    input
+        .as_str()
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("{label}"))
+}
+
 /// Format an error for display in the footer status bar.
 pub fn user_message(err: impl std::fmt::Display) -> String {
     let msg = err.to_string();
@@ -283,31 +299,12 @@ impl App {
     }
 
     pub fn parse_params(&self) -> Result<(f64, f64, f64, f64)> {
-        let x0: f64 = self
-            .x0
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|_| anyhow::anyhow!("x₀ must be a number"))?;
-        let y0: f64 = self
-            .y0
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|_| anyhow::anyhow!("y₀ must be a number"))?;
-        let x_end: f64 = self
-            .x_end
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|_| anyhow::anyhow!("x_end must be a number"))?;
-        let h: f64 = self
-            .h
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|_| anyhow::anyhow!("h must be a positive number"))?;
-        Ok((x0, y0, x_end, h))
+        Ok((
+            parse_input_f64(&self.x0, "x₀ must be a number")?,
+            parse_input_f64(&self.y0, "y₀ must be a number")?,
+            parse_input_f64(&self.x_end, "x_end must be a number")?,
+            parse_input_f64(&self.h, "h must be a positive number")?,
+        ))
     }
 
     pub fn y0_values(&self) -> Result<Vec<f64>> {
@@ -316,18 +313,8 @@ impl App {
             return Ok(vec![y0_start]);
         }
 
-        let y0_end: f64 = self
-            .y0_end
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|_| anyhow::anyhow!("y₀ end must be a number"))?;
-        let n: usize = self
-            .y0_count
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|_| anyhow::anyhow!("y₀ count must be a positive integer"))?;
+        let y0_end = parse_input_f64(&self.y0_end, "y₀ end must be a number")?;
+        let n = parse_input_usize(&self.y0_count, "y₀ count must be a positive integer")?;
         if n == 0 {
             anyhow::bail!("y₀ count must be at least 1");
         }
@@ -396,21 +383,14 @@ impl App {
     }
 
     pub fn parse_export_options(&self) -> Result<(f64, usize)> {
-        let h: f64 = self
-            .export_h
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|_| anyhow::anyhow!("export h must be a positive number"))?;
+        let h = parse_input_f64(&self.export_h, "export h must be a positive number")?;
         if h <= 0.0 {
             anyhow::bail!("export h must be positive");
         }
-        let n: usize = self
-            .export_n_points
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|_| anyhow::anyhow!("number of points must be a positive integer"))?;
+        let n = parse_input_usize(
+            &self.export_n_points,
+            "number of points must be a positive integer",
+        )?;
         if n == 0 {
             anyhow::bail!("number of points must be at least 1");
         }
