@@ -2,7 +2,7 @@
 
 This document is for someone reading the **Numerical ODE Approximater** source for the first time. It describes how the pieces fit together and where to look for common behavior.
 
-The user guide lives in [README.md](README.md). This file is about the Rust layout only.
+The user guide lives in [INSTRUCTIONS.md](INSTRUCTIONS.md). This file is about the Rust layout only.
 
 
 ---
