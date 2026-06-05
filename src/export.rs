@@ -30,9 +30,10 @@ pub fn write_text_file(
     if h <= 0.0 {
         bail!("export step size h must be positive");
     }
-
-    create_dir_all(EXPORT_DIR)?;
-    let path = PathBuf::from(EXPORT_DIR).join(format!("{name}.txt"));
+    let mut export_dir = env::current_dir()?;
+    export_dir.push(EXPORT_DIR);
+    create_dir_all(export_dir.clone())?;
+    let path = export_dir.join(format!("{name}.txt"));
     let mut file = File::create(&path)?;
 
     writeln!(file, "y' = {equation}")?;
