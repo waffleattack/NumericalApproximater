@@ -26,7 +26,8 @@ pub fn integrate(
         bail!("x_end must be greater than x0");
     }
 
-    let mut points = Vec::new();
+    let est_steps = ((x_end - x0) / h).ceil() as usize + 1;
+    let mut points = Vec::with_capacity(est_steps);
     let mut x = x0;
     let mut y = y0;
     points.push(Point { x, y });
@@ -115,14 +116,14 @@ pub fn subsample_plot(points: &[Point], max: usize) -> Vec<(f64, f64)> {
         return points.iter().map(|p| (p.x, p.y)).collect();
     }
     let last = points.len() - 1;
-    (0..max)
-        .map(|i| {
-            let t = i as f64 / (max - 1) as f64;
-            let idx = (t * last as f64).round() as usize;
-            let p = &points[idx];
-            (p.x, p.y)
-        })
-        .collect()
+    let mut out = Vec::with_capacity(max);
+    for i in 0..max {
+        let t = i as f64 / (max - 1) as f64;
+        let idx = (t * last as f64).round() as usize;
+        let p = &points[idx];
+        out.push((p.x, p.y));
+    }
+    out
 }
 
 #[cfg(test)]

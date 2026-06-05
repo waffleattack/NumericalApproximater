@@ -32,7 +32,7 @@ pub fn write_text_file(
     }
     let mut export_dir = env::current_dir()?;
     export_dir.push(EXPORT_DIR);
-    create_dir_all(export_dir.clone())?;
+    create_dir_all(&export_dir)?;
     let path = export_dir.join(format!("{name}.txt"));
     let mut file = File::create(&path)?;
 

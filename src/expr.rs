@@ -1,22 +1,25 @@
+use std::cell::RefCell;
+
 use anyhow::{Context, Result};
 use evalexpr::{
-    build_operator_tree, eval_with_context, ContextWithMutableVariables, EvalexprError,
-    HashMapContext, Value,
+    build_operator_tree, ContextWithMutableVariables, EvalexprError, HashMapContext, Node, Value,
 };
 
 /// Parsed right-hand side F(x, y) for y' = F(x, y).
 pub struct OdeFunction {
-    expr: String,
+    tree: Node,
+    ctx: RefCell<HashMapContext>,
 }
 
 impl OdeFunction {
     pub fn parse(raw: &str) -> Result<Self> {
         let normalized = normalize_expression(raw)?;
-        build_operator_tree(&normalized)
+        let tree = build_operator_tree(&normalized)
             .map_err(|e| anyhow::anyhow!("syntax error: {e}"))?;
-        Ok(OdeFunction {
-            expr: normalized,
-        })
+        let ctx = RefCell::new(HashMapContext::new());
+        ctx.borrow_mut()
+            .set_value("e".into(), Value::from(std::f64::consts::E))?;
+        Ok(OdeFunction { tree, ctx })
     }
 
     /// Check that F(x, y) evaluates at a point (catches domain errors near IC).
@@ -27,11 +30,10 @@ impl OdeFunction {
     }
 
     pub fn eval(&self, x: f64, y: f64) -> Result<f64> {
-        let mut ctx = HashMapContext::new();
+        let mut ctx = self.ctx.borrow_mut();
         ctx.set_value("x".into(), Value::from(x))?;
         ctx.set_value("y".into(), Value::from(y))?;
-        ctx.set_value("e".into(), Value::from(std::f64::consts::E))?;
-        let v = eval_with_context(&self.expr, &ctx).map_err(map_eval_error)?;
+        let v = self.tree.eval_with_context(&*ctx).map_err(map_eval_error)?;
         v.as_number()
             .map_err(|_| anyhow::anyhow!("expression must evaluate to a number"))
     }
