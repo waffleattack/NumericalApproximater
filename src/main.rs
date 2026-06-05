@@ -91,13 +91,11 @@ fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) -> bool {
             | Focus::Y0Count
             | Focus::XEnd
             | Focus::H => {
-                if let Err(e) = app.recompute() {
-                    app.error = Some(e.to_string());
-                }
+                recompute_with_feedback(app);
             }
             Focus::Y0Family => {
                 app.toggle_y0_family();
-                let _ = app.recompute();
+                recompute_with_feedback(app);
             }
             Focus::MethodDropdown => app.open_method_menu(),
             Focus::ExportButton => app.open_export_prompt(),
@@ -106,9 +104,7 @@ fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) -> bool {
         KeyCode::Char(' ') if app.focus == Focus::MethodDropdown => app.open_method_menu(),
         KeyCode::Char(' ') if app.focus == Focus::Y0Family => {
             app.toggle_y0_family();
-            if let Err(e) = app.recompute() {
-                app.error = Some(e.to_string());
-            }
+            recompute_with_feedback(app);
         }
         KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End | KeyCode::Delete
         | KeyCode::Backspace | KeyCode::Char(_) => {
@@ -121,6 +117,13 @@ fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) -> bool {
     false
 }
 
+fn recompute_with_feedback(app: &mut App) {
+    if let Err(e) = app.recompute() {
+        app.error = Some(app::user_message(e));
+        app.status = None;
+    }
+}
+
 fn handle_export_prompt(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Char('q') => return true,
@@ -129,7 +132,7 @@ fn handle_export_prompt(app: &mut App, code: KeyCode) -> bool {
         }
         KeyCode::Enter => {
             if let Err(e) = app.close_export_prompt(true) {
-                app.error = Some(e.to_string());
+                app.error = Some(app::user_message(e));
                 app.status = None;
             }
         }

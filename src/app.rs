@@ -198,6 +198,16 @@ pub struct App {
     pub status: Option<String>,
 }
 
+/// Format an error for display in the footer status bar.
+pub fn user_message(err: impl std::fmt::Display) -> String {
+    let msg = err.to_string();
+    if msg.trim().is_empty() {
+        "Something went wrong".to_string()
+    } else {
+        msg
+    }
+}
+
 impl App {
     pub fn new() -> Self {
         let mut app = Self {
@@ -251,7 +261,10 @@ impl App {
     pub fn close_method_menu(&mut self, apply: bool) {
         if apply && self.method_menu_open {
             self.method_choice = MethodChoice::from_index(self.method_menu_highlight);
-            let _ = self.recompute();
+            if let Err(e) = self.recompute() {
+                self.error = Some(user_message(e));
+                self.status = None;
+            }
         }
         self.method_menu_open = false;
     }

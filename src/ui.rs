@@ -26,7 +26,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(8),
-            Constraint::Length(2),
+            Constraint::Length(3),
         ])
         .split(area);
 
@@ -617,24 +617,36 @@ fn tick_labels_x(bounds: [f64; 2]) -> Vec<Span<'static>> {
 }
 
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
-    let msg = if let Some(err) = &app.error {
-        err.clone()
+    let (msg, color, title) = if let Some(err) = &app.error {
+        (
+            err.clone(),
+            Color::Red,
+            Some(" Error ".to_string()),
+        )
     } else if let Some(status) = &app.status {
-        status.clone()
+        (
+            status.clone(),
+            Color::Green,
+            Some(" OK ".to_string()),
+        )
     } else {
-        "y₀ family: Space toggle | Enter: update | Export: save | q: quit"
-            .into()
+        (
+            "y₀ family: Space toggle | Enter: update | Export: save | q: quit".into(),
+            Color::DarkGray,
+            None,
+        )
     };
-    let color = if app.error.is_some() {
-        Color::Red
-    } else if app.status.is_some() {
-        Color::Green
-    } else {
-        Color::DarkGray
-    };
+
+    let mut block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(color));
+    if let Some(t) = title {
+        block = block.title(t).title_style(Style::default().fg(color).add_modifier(Modifier::BOLD));
+    }
+
     let footer = Paragraph::new(msg)
         .style(Style::default().fg(color))
-        .wrap(Wrap { trim: true })
-        .block(Block::default().borders(Borders::ALL));
+        .wrap(Wrap { trim: false })
+        .block(block);
     frame.render_widget(footer, area);
 }
