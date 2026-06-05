@@ -828,3 +828,82 @@ Exported this session to `prompt.md` (user/assistant turns from the agent transc
 - Beginner **README.md**
 
 **Key files:** `src/main.rs`, `src/app.rs`, `src/expr.rs`, `src/solver.rs`, `src/ui.rs`, `src/input.rs`, `src/format.rs`, `src/export.rs`
+
+
+# Support for e^x and error display issues
+_Exported on 6/5/2026 at 04:00:06 EDT from Cursor (3.6.31)_
+
+---
+
+**User**
+
+add support for e^x and errors dont show in the sidebar (i assume they are meant to dsisplay in the red/green box at the bototm of the screen)
+
+---
+
+**Cursor**
+
+I’m going to wire in parsing/evaluation support for `e^x` and then trace how validation errors are propagated to the red/green status box so they show there (and not as missing sidebar output). I’ll inspect the expression parser/evaluator plus the UI status rendering first.
+
+I found expression handling and app state; next I’m checking the rendering/event loop to see why errors aren’t reaching the bottom status box and then I’ll patch both behaviors together.
+
+I found two concrete causes: `e` is currently treated like an unknown identifier (so `e^x` fails), and there are a couple recompute paths that drop errors instead of storing them for the footer box. I’m applying fixes for both now.
+
+I’ve added constant handling so `e` maps to `math::e` (enabling `e^x`) and tightened number tokenization so scientific notation parsing doesn’t accidentally consume standalone `e`. Next I’m fixing the recompute error propagation paths so failures consistently hit the bottom red box.
+
+Implemented both parts.
+
+### What changed
+
+- Added support for `e` as Euler’s constant in expression evaluation, so inputs like `e^x` now work.
+  - `src/expr.rs`
+  - `eval()` now binds `e = std::f64::consts::E` in the eval context.
+  - Normalization keeps standalone `e`/`E` as `e` so it resolves correctly.
+
+- Fixed a tokenizer edge case around scientific notation parsing.
+  - `src/expr.rs`
+  - Number tokenization now only consumes `e`/`E` as part of a number when it is a valid exponent (`1e3`, `1e-3`, etc.), instead of accidentally swallowing standalone `e`.
+
+- Ensured recompute errors consistently show in the bottom status box (red/green footer).
+  - `src/main.rs`
+  - Centralized recompute error handling in `recompute_with_feedback()`, and used it for Enter/Space flows.
+  - `src/app.rs`
+  - Method dropdown apply now captures recompute errors into `app.error` / clears `app.status` instead of silently ignoring them.
+
+### Verification
+
+- Ran tests: `cargo test` → all pass (`9 passed`).
+- Checked lints on edited files → no linter errors.
+
+If you want, I can also make the footer message for parse errors a bit more user-friendly (e.g., “Invalid equation: …”) so it’s clearer while typing.
+
+---
+
+**User**
+
+i still dont see descriptive error messages in the box at the bottom, it simply turns re dwhen there is an issue
+
+---
+
+**Cursor**
+
+The footer turns red but the message text may be empty or hidden — I'll trace how errors are stored and how the bottom status box renders them.
+
+
+The footer is only 2 lines tall while the bordered box uses both for top and bottom borders, leaving no room for the message text. I'll fix the layout and make error text render reliably.
+
+
+Adding a small error-formatting helper so messages are never empty and read clearly in the footer.
+
+
+The footer was turning red but had no room to show the message text.
+
+The status bar was only **2 lines tall**, and the bordered box uses **1 line for the top border and 1 for the bottom**, leaving **zero lines** for the error text. The app was storing errors correctly — they just had nowhere to render.
+
+### Fix
+1. **Increased footer height** from 2 to 3 lines so there’s space for the message inside the box.
+2. **Improved footer styling** — red/green border, bold “Error” / “OK” title, and the full message in the content area.
+3. **Added `user_message()`** so errors always produce readable text in the footer.
+
+Restart the app (`cargo run`) and try an invalid input like `xyz` or `h = -1` — you should see messages like `syntax error: ...` or `h must be a positive number` in the bottom box.
+
