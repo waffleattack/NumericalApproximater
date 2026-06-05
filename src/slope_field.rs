@@ -159,4 +159,37 @@ mod tests {
         assert!(bounds.y[0] < 0.3);
         assert!(bounds.y[1] > 0.3);
     }
+
+    #[test]
+    fn build_slope_field_rejects_degenerate_grid() {
+        let f = OdeFunction::parse("x").unwrap();
+        let bounds = ViewBounds {
+            x: [0.0, 2.0],
+            y: [0.0, 2.0],
+        };
+        assert!(build_slope_field(&f, bounds, 1, 3).is_empty());
+        assert!(build_slope_field(&f, bounds, 3, 1).is_empty());
+    }
+
+    #[test]
+    fn build_slope_field_rejects_non_positive_spacing() {
+        let f = OdeFunction::parse("x").unwrap();
+        let bounds = ViewBounds {
+            x: [1.0, 1.0],
+            y: [0.0, 2.0],
+        };
+        assert!(build_slope_field(&f, bounds, 3, 3).is_empty());
+    }
+
+    #[test]
+    fn build_slope_field_skips_failed_evaluations() {
+        let f = OdeFunction::parse("sqrt(y)").unwrap();
+        let bounds = ViewBounds {
+            x: [0.0, 2.0],
+            y: [-2.0, 2.0],
+        };
+        let segs = build_slope_field(&f, bounds, 3, 3);
+        assert!(!segs.is_empty());
+        assert!(segs.len() < 9);
+    }
 }

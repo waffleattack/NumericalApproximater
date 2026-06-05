@@ -209,4 +209,12 @@ mod tests {
         input.backspace();
         assert_eq!(input.as_str(), "aéb");
     }
+
+    #[test]
+    fn cursor_past_end_maps_to_string_end() {
+        let mut input = TextInput::new("ab");
+        input.cursor = 99;
+        input.insert('c');
+        assert_eq!(input.as_str(), "abc");
+    }
 }

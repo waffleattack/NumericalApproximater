@@ -267,6 +267,33 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_filename_strips_txt_suffix() {
+        assert_eq!(sanitize_filename("report.txt"), "report");
+        assert_eq!(sanitize_filename("  data.txt  "), "data");
+    }
+
+    #[test]
+    fn write_text_file_rejects_non_positive_h() {
+        let _dir = TempWorkDir::new();
+        let f = OdeFunction::parse("1").unwrap();
+        let err = write_text_file(
+            "1",
+            &f,
+            MethodChoice::Euler,
+            0.0,
+            &[0.0],
+            1.0,
+            0.0,
+            3,
+            "bad_h",
+            false,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("export step size h must be positive"));
+    }
+
+    #[test]
     fn write_text_file_family_header() {
         let _dir = TempWorkDir::new();
         let f = OdeFunction::parse("x").unwrap();

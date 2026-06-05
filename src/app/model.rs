@@ -152,3 +152,38 @@ pub struct CurveSeries {
     pub points: Vec<Point>,
     pub plot_xy: Vec<(f64, f64)>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn method_short_labels() {
+        assert_eq!(Method::Euler.short_label(), "Euler");
+        assert_eq!(Method::ImprovedEuler.short_label(), "Improved Euler");
+        assert_eq!(Method::RungeKutta.short_label(), "Runge-Kutta");
+    }
+
+    #[test]
+    fn method_choice_labels_and_slope_policy() {
+        assert_eq!(MethodChoice::Euler.label(), "Euler");
+        assert_eq!(MethodChoice::ImprovedEuler.label(), "Improved Euler");
+        assert_eq!(MethodChoice::RungeKutta.label(), "Runge-Kutta (RK4)");
+        assert_eq!(MethodChoice::All.label(), "All three methods");
+        assert!(MethodChoice::Euler.allows_slope_field());
+        assert!(MethodChoice::RungeKutta.allows_slope_field());
+        assert!(!MethodChoice::All.allows_slope_field());
+    }
+
+    #[test]
+    fn graph_display_modes() {
+        assert_eq!(GraphDisplay::Solution.label(), "solution");
+        assert_eq!(GraphDisplay::SlopeField.label(), "slope");
+        assert_eq!(GraphDisplay::Both.label(), "both");
+        assert!(GraphDisplay::Solution.shows_solution());
+        assert!(!GraphDisplay::Solution.shows_slope_field());
+        assert!(GraphDisplay::Both.shows_solution());
+        assert!(GraphDisplay::Both.shows_slope_field());
+        assert_eq!(GraphDisplay::Both.next(), GraphDisplay::Solution);
+    }
+}

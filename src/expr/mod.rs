@@ -252,4 +252,50 @@ mod tests {
             .to_string();
         assert!(err.contains("'-' is missing an operand"));
     }
+
+    #[test]
+    fn rejects_empty_equation() {
+        let err = normalize_expression("")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert_eq!(err, "equation cannot be empty");
+    }
+
+    #[test]
+    fn rejects_unexpected_paren_and_equals() {
+        let err = normalize_expression("x)")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert_eq!(err, "parse error: unexpected ')'");
+        let err = normalize_expression("x=1")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert_eq!(err, "parse error: unexpected '=' in expression");
+    }
+
+    #[test]
+    fn rejects_unexpected_character_and_leading_operator() {
+        let err = normalize_expression("x$")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert_eq!(err, "parse error: unexpected character '$'");
+        let err = normalize_expression("+x")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert!(err.contains("unexpected '+' at start of expression"));
+    }
+
+    #[test]
+    fn rejects_dy_dx_prefix_without_rhs() {
+        let err = normalize_expression("dy/dx =")
+            .err()
+            .expect("should fail")
+            .to_string();
+        assert_eq!(err, "equation cannot be empty");
+    }
 }

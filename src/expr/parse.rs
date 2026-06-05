@@ -292,7 +292,7 @@ fn validate_syntax(tokens: &[Token]) -> Result<()> {
             continue;
         }
 
-        if !is_operand_end(tokens.get(i - 1)) {
+        if i == 0 || !is_operand_end(tokens.get(i - 1)) {
             anyhow::bail!("parse error: unexpected '{op}' at start of expression");
         }
         if !is_operand_start(tokens.get(i + 1)) {

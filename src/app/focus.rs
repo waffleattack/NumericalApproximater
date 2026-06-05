@@ -114,3 +114,60 @@ impl ExportPromptFocus {
         Self::ORDER[(i + Self::ORDER.len() - 1) % Self::ORDER.len()]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn export_prompt_focus_cycles() {
+        assert_eq!(
+            ExportPromptFocus::Filename.next(),
+            ExportPromptFocus::H
+        );
+        assert_eq!(
+            ExportPromptFocus::H.next(),
+            ExportPromptFocus::NumPoints
+        );
+        assert_eq!(
+            ExportPromptFocus::NumPoints.next(),
+            ExportPromptFocus::Filename
+        );
+        assert_eq!(ExportPromptFocus::Filename.prev(), ExportPromptFocus::NumPoints);
+    }
+
+    #[test]
+    fn focus_is_text_input() {
+        assert!(Focus::Equation.is_text_input());
+        assert!(Focus::ViewYMax.is_text_input());
+        assert!(!Focus::GraphDisplay.is_text_input());
+        assert!(!Focus::ExportButton.is_text_input());
+    }
+
+    #[test]
+    fn focus_nav_with_y0_family_and_slope_bounds() {
+        let nav = FocusNav {
+            y0_family: true,
+            slope_bounds: true,
+        };
+        let mut f = Focus::H;
+        f = f.next(nav);
+        assert_eq!(f, Focus::ViewXMin);
+        f = f.prev(nav);
+        assert_eq!(f, Focus::H);
+        f = f.prev(nav);
+        assert_eq!(f, Focus::XEnd);
+        f = Focus::Y0Count.next(nav);
+        assert_eq!(f, Focus::XEnd);
+    }
+
+    #[test]
+    fn focus_prev_full_ring_without_extras() {
+        let nav = FocusNav {
+            y0_family: false,
+            slope_bounds: false,
+        };
+        assert_eq!(Focus::ExportButton.prev(nav), Focus::H);
+        assert_eq!(Focus::QuitButton.prev(nav), Focus::ExportButton);
+    }
+}

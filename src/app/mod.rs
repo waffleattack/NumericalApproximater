@@ -811,4 +811,275 @@ mod tests {
         let err = app.parse_export_options().unwrap_err().to_string();
         assert!(err.contains("number of points must be at least 1"));
     }
+
+    #[test]
+    fn toggle_y0_family_flips_flag() {
+        let mut app = test_app();
+        assert!(!app.y0_family_enabled);
+        app.toggle_y0_family();
+        assert!(app.y0_family_enabled);
+    }
+
+    #[test]
+    fn cycle_graph_display_advances_when_allowed() {
+        let mut app = test_app();
+        app.cycle_graph_display();
+        assert_eq!(app.graph_display, GraphDisplay::SlopeField);
+    }
+
+    #[test]
+    fn focus_nav_reflects_sidebar_state() {
+        let mut app = test_app();
+        app.y0_family_enabled = true;
+        app.graph_display = GraphDisplay::SlopeField;
+        let nav = app.focus_nav();
+        assert!(nav.y0_family);
+        assert!(nav.slope_bounds);
+    }
+
+    #[test]
+    fn focused_input_mut_covers_text_fields() {
+        let mut app = test_app();
+        for focus in [
+            Focus::Equation,
+            Focus::X0,
+            Focus::Y0,
+            Focus::Y0End,
+            Focus::Y0Count,
+            Focus::XEnd,
+            Focus::H,
+            Focus::ViewXMin,
+            Focus::ViewXMax,
+            Focus::ViewYMin,
+            Focus::ViewYMax,
+        ] {
+            app.focus = focus;
+            assert!(app.focused_input_mut().is_some());
+        }
+        app.focus = Focus::MethodDropdown;
+        assert!(app.focused_input_mut().is_none());
+    }
+
+    #[test]
+    fn method_menu_open_close_and_navigation() {
+        let mut app = test_app();
+        app.open_method_menu();
+        assert!(app.method_menu_open);
+        assert_eq!(app.method_menu_highlight, app.method_choice.index());
+        app.method_menu_highlight = 0;
+        app.method_menu_up();
+        assert_eq!(
+            app.method_menu_highlight,
+            MethodChoice::OPTIONS.len() - 1
+        );
+        app.method_menu_down();
+        assert_eq!(app.method_menu_highlight, 0);
+        app.close_method_menu(false);
+        assert!(!app.method_menu_open);
+        assert_eq!(app.method_choice, MethodChoice::RungeKutta);
+    }
+
+    #[test]
+    fn close_method_menu_apply_switches_and_recomputes() {
+        let mut app = test_app();
+        app.open_method_menu();
+        app.method_menu_highlight = MethodChoice::Euler.index();
+        app.close_method_menu(true);
+        assert_eq!(app.method_choice, MethodChoice::Euler);
+        assert!(!app.method_menu_open);
+        assert!(!app.curves.is_empty());
+    }
+
+    #[test]
+    fn close_method_menu_apply_records_recompute_error() {
+        let mut app = test_app();
+        app.equation = TextInput::new("sin");
+        app.open_method_menu();
+        app.close_method_menu(true);
+        assert!(app.error.is_some());
+        assert!(!app.method_menu_open);
+    }
+
+    #[test]
+    fn close_method_menu_all_clamps_slope_display() {
+        let mut app = test_app();
+        app.graph_display = GraphDisplay::Both;
+        app.open_method_menu();
+        app.method_menu_highlight = MethodChoice::All.index();
+        app.close_method_menu(true);
+        assert_eq!(app.graph_display, GraphDisplay::Solution);
+    }
+
+    #[test]
+    fn parse_params_invalid_y0_and_x_end() {
+        let mut app = test_app();
+        app.y0 = TextInput::new("bad");
+        assert!(
+            app.parse_params()
+                .unwrap_err()
+                .to_string()
+                .contains("y₀ must be a number")
+        );
+        app.y0 = TextInput::new("0");
+        app.x_end = TextInput::new("bad");
+        assert!(
+            app.parse_params()
+                .unwrap_err()
+                .to_string()
+                .contains("x_end must be a number")
+        );
+    }
+
+    #[test]
+    fn y0_values_invalid_y0_end_and_count() {
+        let mut app = test_app();
+        app.y0_family_enabled = true;
+        app.y0_end = TextInput::new("x");
+        assert!(
+            app.y0_values()
+                .unwrap_err()
+                .to_string()
+                .contains("y₀ end must be a number")
+        );
+        app.y0_end = TextInput::new("1");
+        app.y0_count = TextInput::new("x");
+        assert!(
+            app.y0_values()
+                .unwrap_err()
+                .to_string()
+                .contains("y₀ count must be a positive integer")
+        );
+    }
+
+    #[test]
+    fn view_bounds_validation_errors() {
+        let mut app = test_app();
+        app.graph_display = GraphDisplay::SlopeField;
+        app.recompute().unwrap();
+        app.view_x_min = TextInput::new("bad");
+        assert!(
+            app.recompute_with_view_bounds()
+                .unwrap_err()
+                .to_string()
+                .contains("view x min must be a number")
+        );
+        app.view_x_min = TextInput::new("5");
+        app.view_x_max = TextInput::new("1");
+        assert!(
+            app.recompute_with_view_bounds()
+                .unwrap_err()
+                .to_string()
+                .contains("view x min must be less than x max")
+        );
+        app.view_x_min = TextInput::new("0");
+        app.view_x_max = TextInput::new("3");
+        app.view_y_min = TextInput::new("5");
+        app.view_y_max = TextInput::new("1");
+        assert!(
+            app.recompute_with_view_bounds()
+                .unwrap_err()
+                .to_string()
+                .contains("view y min must be less than y max")
+        );
+    }
+
+    #[test]
+    fn recompute_all_methods_with_y0_family_labels() {
+        let mut app = test_app();
+        app.method_choice = MethodChoice::All;
+        app.y0_family_enabled = true;
+        app.y0 = TextInput::new("0");
+        app.y0_end = TextInput::new("1");
+        app.y0_count = TextInput::new("2");
+        app.recompute().unwrap();
+        assert_eq!(app.curves.len(), 6);
+        assert!(app.curves.iter().any(|c| c.label.contains("y₀=")));
+    }
+
+    #[test]
+    fn open_export_prompt_and_input_mut() {
+        let mut app = test_app();
+        app.open_export_prompt();
+        assert!(app.export_prompt_open);
+        assert_eq!(app.export_prompt_focus, ExportPromptFocus::Filename);
+        assert!(app.export_filename.as_str().contains("ode_export"));
+        app.export_prompt_focus = ExportPromptFocus::H;
+        assert!(app.export_prompt_input_mut().as_str().contains("0.01"));
+        app.export_prompt_focus = ExportPromptFocus::NumPoints;
+        assert_eq!(app.export_prompt_input_mut().as_str(), "100");
+    }
+
+    #[test]
+    fn parse_export_options_invalid_n_points_parse() {
+        let mut app = test_app();
+        app.export_n_points = TextInput::new("abc");
+        let err = app.parse_export_options().unwrap_err().to_string();
+        assert!(err.contains("number of points must be a positive integer"));
+    }
+
+    #[test]
+    fn close_export_prompt_without_save() {
+        let mut app = test_app();
+        app.open_export_prompt();
+        app.close_export_prompt(false).unwrap();
+        assert!(!app.export_prompt_open);
+        assert!(app.status.is_none());
+    }
+
+    #[test]
+    fn close_export_prompt_saves_file() {
+        use std::io::Read;
+        use std::path::PathBuf;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::Mutex;
+
+        static TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+        static CWD_LOCK: Mutex<()> = Mutex::new(());
+
+        struct TempWorkDir {
+            path: PathBuf,
+            previous: PathBuf,
+            _lock: std::sync::MutexGuard<'static, ()>,
+        }
+
+        impl TempWorkDir {
+            fn new() -> Self {
+                let lock = CWD_LOCK.lock().unwrap();
+                let n = TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+                let path = std::env::temp_dir().join(format!(
+                    "numerical_approximater_app_test_{}_{}",
+                    std::process::id(),
+                    n
+                ));
+                std::fs::create_dir_all(&path).unwrap();
+                let previous = std::env::current_dir().unwrap();
+                std::env::set_current_dir(&path).unwrap();
+                Self {
+                    path,
+                    previous,
+                    _lock: lock,
+                }
+            }
+        }
+
+        impl Drop for TempWorkDir {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.previous);
+                let _ = std::fs::remove_dir_all(&self.path);
+            }
+        }
+
+        let _dir = TempWorkDir::new();
+        let mut app = test_app();
+        app.open_export_prompt();
+        app.close_export_prompt(true).unwrap();
+        assert!(!app.export_prompt_open);
+        assert!(app.status.as_ref().unwrap().contains("Saved to"));
+        let mut contents = String::new();
+        std::fs::File::open("exported/ode_export.txt")
+            .unwrap()
+            .read_to_string(&mut contents)
+            .unwrap();
+        assert!(contents.contains("y' = y - y^3"));
+    }
 }

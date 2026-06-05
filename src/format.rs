@@ -265,4 +265,25 @@ mod tests {
         assert_eq!(format_sigfigs(1.5), "1.5");
         assert_eq!(format_sigfigs(2.0), "2");
     }
+
+    #[test]
+    fn y_axis_fallback_when_snapped_bounds_exclude_data() {
+        let padded = [5.0, 6.0];
+        let (bounds, digits) = y_axis_display(padded, 0.1, 1.9);
+        assert_eq!(bounds, padded);
+        assert!(digits >= CHART_SIGFIGS);
+    }
+
+    #[test]
+    fn y_axis_fallback_for_zero_span_data() {
+        let (bounds, digits) = y_axis_display([0.0, 1.0], 0.5, 0.5);
+        assert_eq!(digits, CHART_SIGFIGS);
+        assert!(bounds[0] <= bounds[1]);
+    }
+
+    #[test]
+    fn snap_axis_bounds_swaps_when_round_inverts_order() {
+        let snapped = snap_axis_bounds([1.0004, 1.0006], 3);
+        assert!(snapped[0] <= snapped[1]);
+    }
 }
