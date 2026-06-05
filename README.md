@@ -139,6 +139,8 @@ No need to pass `--release` every time, but it is recommended for smooth graph u
 
 ### For developers
 
+See [CODE_STRUCTURE.md](CODE_STRUCTURE.md) for how the source is organized.
+
 ```bash
 cargo test              # unit tests
 cargo bench             # hot-path benchmarks (optional)
