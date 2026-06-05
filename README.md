@@ -24,9 +24,11 @@ cargo run --release
 |------|---------|
 | **Top bar** | Equation `y' = …` — edit **F(x, y)** here |
 | **Graph** | Approximate solution curve(s) |
-| **Sidebar** | Method, interval (**x₀**, **x_end**), step size **h**, initial value **y₀**, optional **y₀ family**, **Export** |
+| **Sidebar** | Method, **y₀ family** toggle, interval (**x₀**, **x_end**), step size **h**, initial value(s), **Save**, **Quit** |
+| **Footer** | Errors (red) or brief confirmations (green) |
 
 The default equation is **`y - y^3`** (i.e. **y' = y − y³**). That model has stable equilibria at **y = ±1** and an unstable equilibrium at **y = 0**; different starting **y₀** can converge, stay near zero, or blow up — useful for trying the **y₀ family** feature.
+
 
 ---
 
@@ -34,12 +36,14 @@ The default equation is **`y - y^3`** (i.e. **y' = y − y³**). That model has 
 
 1. **Run** the app (`cargo run --release`).
 2. The graph should already show a solution for the defaults (**x₀ = 0**, **y₀ = 0.3**, **x_end = 3**, **h = 0.01**).
-3. **Change the equation** — Tab to the equation bar, edit (e.g. `x - y`), press **Enter** to refresh the graph.
-4. **Change the method** — Tab to **Method**, press **Enter** or **Space** to open the list, use **↑** / **↓**, then **Enter** or **Space** to confirm (**Esc** to cancel without changing).
-5. **Several initial values** — Tab to **y₀ family**, press **Enter** or **Space** to turn it **ON**, set **y₀ start**, **y₀ end**, and **y₀ #** (max 15 curves), then **Enter** on a parameter field to update.
-6. **Export** — Tab to **Export**, **Enter**, fill in filename / export **h** / **points**, **Enter** to save under `exported/<name>.txt`.
+3. **Change the equation** — Tab to the equation bar, edit (e.g. `x - y`), **Enter** to refresh.
+4. **Change the method** — Tab to **Method**, **Enter** to open the list, **↑** / **↓** to pick, **Enter** to confirm (**Esc** to cancel).
+5. **Several initial values** — Tab to **y₀ family**, **Enter** to turn it **ON**, set **y₀ start**, **y₀ end**, and **y₀ #** (max 15), **Enter** to update.
+6. **Export** — Tab to **Save** (or **`s`**), fill in filename / **h** / **points**, **Enter** to save under `exported/`.
+7. **Quit** — **Quit** + **Enter**, **`q`**, or **Ctrl+C**.
 
-Errors (bad formula, invalid numbers) appear in a **red message** at the bottom of the sidebar.
+Check the footer if something fails.
+
 
 ---
 
@@ -47,15 +51,15 @@ Errors (bad formula, invalid numbers) appear in a **red message** at the bottom 
 
 | Key | Action |
 |-----|--------|
-| **Tab** / **↑** / **↓** | Move focus between sidebar fields and the equation bar |
-| **←** / **→** | Move cursor inside a text field |
-| **Home** / **End** | Jump to start/end of text in a field |
-| **Enter** | Recompute graph (equation or numeric fields); open export; open **y₀ family** toggle; confirm method menu |
-| **Space** | Open method menu (when **Method** is focused); confirm method choice in the menu; toggle **y₀ family** when that row is focused |
-| **Esc** | Cancel export dialog or method menu (no change) |
-| **q** | Quit the app |
+| **Tab**, **↑**, **↓** | Move focus |
+| **Enter** | Apply / confirm |
+| **Space** | Same as **Enter**, except in text fields (types a space) |
+| **Esc** | Cancel dialog or menu |
+| **s**, **q** | Export / quit (ignored while typing in a field) |
+| **Ctrl+C** | Quit |
 
-In the **export** popup: **Tab** / **↑** / **↓** move between filename, **h**, and **points**; **Enter** saves; **Esc** cancels.
+In the export dialog, **Enter** saves and **Esc** cancels. In the method menu, **↑** / **↓** choose, **Enter** confirms.
+
 
 ---
 
@@ -66,12 +70,16 @@ You only type the right-hand side **F**; the app shows `y' = F`.
 | You can write | Meaning |
 |---------------|---------|
 | `x`, `y` | Variables |
+| `e`, `e^x` | Euler’s number and exponentials |
 | `2y`, `xy`, `2(x+y)` | Implicit multiplication |
-| `sin(x)`, `cos(y)`, `exp(x)` | Standard functions |
-| `y^3`, `x^2` | Powers |
+| `sin(x)`, `cos(y)`, `exp(x)`, `ln(x)`, `sqrt(x)` | Standard functions |
+| `y^3`, `x^2`, `sin(x)^2` | Powers (use parentheses on function results: `sin(x)^2`, not `sin^2(x)`) |
 | `y - y^3` | Example: cubic ODE |
 
 You may paste a full equation such as `y'=y-y^3`; the app strips the `y' =` prefix.
+
+Supported functions include **sin**, **cos**, **tan**, **exp**, **ln**, **log**, **sqrt**, **abs**, and the usual hyperbolic and inverse trig names. Function names must be followed by parentheses, e.g. `sin(x)` not `sin x`.
+
 
 ---
 
@@ -80,12 +88,13 @@ You may paste a full equation such as `y'=y-y^3`; the app strips the `y' =` pref
 | Field | Meaning |
 |-------|---------|
 | **x₀** | Start of the x-interval |
-| **y₀** | Initial value (used when **y₀ family** is OFF) |
-| **x_end** | End of the x-interval (must be **> x₀**) |
+| **y₀** / **y₀ start** | Initial value (single **y₀** when family is OFF; start of the range when ON) |
+| **y₀ end**, **y₀ #** | Shown when **y₀ family** is ON: equally spaced **y₀** from start to end (**y₀ #** values, max 15) |
+| **x_end** | End of the x-interval (**> x₀** integrates forward, **< x₀** backward) |
 | **h** | Fixed step size for integration (must be **> 0**) |
-| **y₀ family** | When ON: integrate for equally spaced **y₀** from **y₀ start** to **y₀ end** (**y₀ #** values, max 15) |
 
 Smaller **h** means more accurate curves but slower updates. The graph subsamples to at most about 800 points per curve for drawing.
+
 
 ---
 
@@ -95,6 +104,7 @@ Smaller **h** means more accurate curves but slower updates. The graph subsample
 - **Improved Euler** — predictor–corrector (Heun-type).
 - **Runge–Kutta (RK4)** — usually the most accurate for a given **h**.
 - **All three methods** — three stacked plots, one per method.
+
 
 ---
 
@@ -114,6 +124,7 @@ x0 = 0, y0 = 0.3, x_end = 3, h = 0.01, points = 100
 Runge-Kutta: (0, 0.3), (0.03, 0.30891), ...
 ```
 
+
 ---
 
 ## 9. Running again later
@@ -126,11 +137,13 @@ cargo run --release
 
 No need to pass `--release` every time, but it is recommended for smooth graph updates.
 
-To run tests (optional, for developers):
+### For developers
 
 ```bash
-cargo test
+cargo test              # unit tests
+cargo bench             # hot-path benchmarks (optional)
 ```
+
 
 ---
 
@@ -140,9 +153,11 @@ cargo test
 |---------|-------------|
 | `cargo: command not found` | Install Rust via [rustup.rs](https://rustup.rs), restart the terminal |
 | Compile errors after updating the repo | `cargo build --release` and read the error line; ensure you are in the project root (folder with `Cargo.toml`) |
-| Graph does not update | Press **Enter** after editing the equation or a number field; check the red error text in the sidebar |
+| Graph does not update | Press **Enter** after editing the equation or a number field; check the red error text in the footer |
+| `function 'sin' must be called with parentheses` | Write `sin(x)` instead of `sin x` or `sin^2(x)` |
 | Blank or garbled UI | Use a larger terminal window; avoid resizing while the app runs |
-| Export failed | Check that the filename is not empty; ensure `x_end > x0` and `h > 0` |
+| Export failed | Check that the filename is not empty; ensure `x_end ≠ x₀` and `h > 0` |
+
 
 ---
 

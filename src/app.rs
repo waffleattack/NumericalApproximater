@@ -130,6 +130,7 @@ pub enum Focus {
     XEnd,
     H,
     ExportButton,
+    QuitButton,
 }
 
 impl Focus {
@@ -167,7 +168,7 @@ impl Focus {
     pub fn is_text_input(self) -> bool {
         !matches!(
             self,
-            Focus::MethodDropdown | Focus::ExportButton | Focus::Y0Family
+            Focus::MethodDropdown | Focus::ExportButton | Focus::QuitButton | Focus::Y0Family
         )
     }
 }
@@ -196,6 +197,7 @@ fn step(from: Focus, y0_family: bool, forward: bool) -> Focus {
             Focus::XEnd,
             Focus::H,
             Focus::ExportButton,
+            Focus::QuitButton,
         ]
     } else {
         &[
@@ -207,6 +209,7 @@ fn step(from: Focus, y0_family: bool, forward: bool) -> Focus {
             Focus::XEnd,
             Focus::H,
             Focus::ExportButton,
+            Focus::QuitButton,
         ]
     };
     let i = order.iter().position(|&f| f == from).unwrap_or(0);
@@ -393,7 +396,10 @@ impl App {
             Focus::Y0Count => Some(&mut self.y0_count),
             Focus::XEnd => Some(&mut self.x_end),
             Focus::H => Some(&mut self.h),
-            Focus::Y0Family | Focus::ExportButton | Focus::MethodDropdown => None,
+            Focus::Y0Family
+            | Focus::ExportButton
+            | Focus::QuitButton
+            | Focus::MethodDropdown => None,
         }
     }
 
@@ -777,8 +783,9 @@ mod tests {
 
     #[test]
     fn focus_prev_wraps() {
-        assert_eq!(Focus::Equation.prev(false), Focus::ExportButton);
-        assert_eq!(Focus::ExportButton.next(false), Focus::Equation);
+        assert_eq!(Focus::Equation.prev(false), Focus::QuitButton);
+        assert_eq!(Focus::ExportButton.next(false), Focus::QuitButton);
+        assert_eq!(Focus::QuitButton.next(false), Focus::Equation);
     }
 
     #[test]

@@ -129,34 +129,26 @@ fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) -> bool {
     }
 
     match code {
-        KeyCode::Char('q') => return true,
+        KeyCode::Char('q') if !app.focus.is_text_input() => return true,
+        KeyCode::Char('s') if !app.focus.is_text_input() => app.open_export_prompt(),
         KeyCode::Tab => app.focus = app.focus.next(app.y0_family_enabled),
         KeyCode::BackTab => app.focus = app.focus.prev(app.y0_family_enabled),
         KeyCode::Up => app.focus = app.focus.prev(app.y0_family_enabled),
         KeyCode::Down => app.focus = app.focus.next(app.y0_family_enabled),
-        KeyCode::Enter => match app.focus {
-            Focus::Equation
-            | Focus::X0
-            | Focus::Y0
-            | Focus::Y0End
-            | Focus::Y0Count
-            | Focus::XEnd
-            | Focus::H => {
-                recompute_with_feedback(app);
+        KeyCode::Enter => {
+            if handle_activate(app) {
+                return true;
             }
-            Focus::Y0Family => {
-                app.toggle_y0_family();
-                recompute_with_feedback(app);
-            }
-            Focus::MethodDropdown => app.open_method_menu(),
-            Focus::ExportButton => app.open_export_prompt(),
-        },
-        KeyCode::Esc => {}
-        KeyCode::Char(' ') if app.focus == Focus::MethodDropdown => app.open_method_menu(),
-        KeyCode::Char(' ') if app.focus == Focus::Y0Family => {
-            app.toggle_y0_family();
-            recompute_with_feedback(app);
         }
+        KeyCode::Char(' ') if app.focus.is_text_input() => {
+            handle_text_input_key(app, code);
+        }
+        KeyCode::Char(' ') => {
+            if handle_activate(app) {
+                return true;
+            }
+        }
+        KeyCode::Esc => {}
         KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End | KeyCode::Delete
         | KeyCode::Backspace | KeyCode::Char(_) => {
             if app.focus.is_text_input() {
@@ -166,6 +158,40 @@ fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) -> bool {
         _ => {}
     }
     false
+}
+
+/// Activate the focused control (Enter everywhere; Space when not in a text field).
+///
+/// # Returns
+///
+/// `true` if the application should exit.
+fn handle_activate(app: &mut App) -> bool {
+    match app.focus {
+        Focus::Equation
+        | Focus::X0
+        | Focus::Y0
+        | Focus::Y0End
+        | Focus::Y0Count
+        | Focus::XEnd
+        | Focus::H => {
+            recompute_with_feedback(app);
+            false
+        }
+        Focus::Y0Family => {
+            app.toggle_y0_family();
+            recompute_with_feedback(app);
+            false
+        }
+        Focus::MethodDropdown => {
+            app.open_method_menu();
+            false
+        }
+        Focus::ExportButton => {
+            app.open_export_prompt();
+            false
+        }
+        Focus::QuitButton => true,
+    }
 }
 
 /// Run `recompute` and store any error in the footer status bar.
@@ -192,7 +218,6 @@ fn recompute_with_feedback(app: &mut App) {
 /// `true` if the application should exit, `false` otherwise.
 fn handle_export_prompt(app: &mut App, code: KeyCode) -> bool {
     match code {
-        KeyCode::Char('q') => return true,
         KeyCode::Esc => {
             let _ = app.close_export_prompt(false);
         }

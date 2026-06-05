@@ -137,11 +137,7 @@ fn draw_equation_bar(frame: &mut Frame, area: Rect, app: &App) {
         &app.equation,
         focused,
         Some(EQUATION_PREFIX),
-        if focused {
-            Some("  [Enter: update]")
-        } else {
-            None
-        },
+        None,
         false,
     );
 }
@@ -257,6 +253,7 @@ fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
         Constraint::Length(3), // h
         Constraint::Length(1), // legend
         Constraint::Length(3), // export
+        Constraint::Length(3), // quit
         Constraint::Min(0),
     ]);
 
@@ -302,6 +299,8 @@ fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     );
     i += 1;
     draw_export_button(frame, rows[i], app.focus == Focus::ExportButton);
+    i += 1;
+    draw_quit_button(frame, rows[i], app.focus == Focus::QuitButton);
 }
 
 /// Draw the y₀ family on/off toggle control.
@@ -330,12 +329,22 @@ fn draw_y0_family_toggle(frame: &mut Frame, area: Rect, app: &App) {
         .title(" y₀ family ");
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let label = if on {
-        " ON — Space: off "
-    } else {
-        " OFF — Space: on "
-    };
+    let label = if on { " ON " } else { " OFF " };
     frame.render_widget(Paragraph::new(label).style(style), inner);
+}
+
+/// Label for sidebar action buttons: leading space, then a bright first letter (shortcut key).
+///
+/// Terminals cannot change per-character font size; the bright palette reads slightly larger.
+fn shortcut_button_label(label: &str, base: Style, accent: Color) -> Line<'_> {
+    let mut chars = label.chars();
+    let first = chars.next().unwrap_or(' ');
+    let rest: String = chars.collect();
+    Line::from(vec![
+        Span::styled(" ", base),
+        Span::styled(first.to_string(), base.fg(accent)),
+        Span::styled(rest, base),
+    ])
 }
 
 /// Draw the export action button in the sidebar.
@@ -346,13 +355,13 @@ fn draw_y0_family_toggle(frame: &mut Frame, area: Rect, app: &App) {
 /// * `area` - Layout region for the button.
 /// * `focused` - Whether the export button has keyboard focus.
 fn draw_export_button(frame: &mut Frame, area: Rect, focused: bool) {
-    let style = if focused {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Green)
-            .add_modifier(Modifier::BOLD)
+    let (base, accent) = if focused {
+        (
+            Style::default().fg(Color::Black).bg(Color::Green),
+            Color::White,
+        )
     } else {
-        Style::default().fg(Color::Green)
+        (Style::default().fg(Color::Green), Color::LightGreen)
     };
     let block = Block::default()
         .borders(Borders::ALL)
@@ -360,12 +369,32 @@ fn draw_export_button(frame: &mut Frame, area: Rect, focused: bool) {
         .title(" Export ");
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let label = if focused {
-        " Enter — save to exported/ "
+    frame.render_widget(
+        Paragraph::new(shortcut_button_label("Save", base, accent)),
+        inner,
+    );
+}
+
+/// Draw the quit action button in the sidebar.
+fn draw_quit_button(frame: &mut Frame, area: Rect, focused: bool) {
+    let (base, accent) = if focused {
+        (
+            Style::default().fg(Color::Black).bg(Color::Red),
+            Color::White,
+        )
     } else {
-        " Save text file "
+        (Style::default().fg(Color::Red), Color::LightRed)
     };
-    frame.render_widget(Paragraph::new(label).style(style), inner);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(field_border(focused)))
+        .title(" Quit ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    frame.render_widget(
+        Paragraph::new(shortcut_button_label("Quit", base, accent)),
+        inner,
+    );
 }
 
 /// Draw the centered export dialog (filename, step size, point count).
@@ -840,7 +869,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
         )
     } else {
         (
-            "y₀ family: Space toggle | Enter: update | Export: save | q: quit".into(),
+            String::new(),
             Color::DarkGray,
             None,
         )
