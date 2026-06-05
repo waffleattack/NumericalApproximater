@@ -1,17 +1,9 @@
 //! Terminal entry point: event loop, keyboard handling, and screen setup.
 
-mod app;
-mod export;
-mod expr;
-mod format;
-mod input;
-mod solver;
-mod ui;
-
 use std::io;
 
 use anyhow::Result;
-use app::{App, Focus};
+use numerical_approximater::app::{user_message, App, Focus};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -95,7 +87,7 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
 
     loop {
         terminal.hide_cursor()?;
-        terminal.draw(|f| ui::draw(f, &app))?;
+        terminal.draw(|f| numerical_approximater::ui::draw(f, &app))?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
@@ -183,7 +175,7 @@ fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) -> bool {
 /// * `app` - Application state to update with curves or an error message.
 fn recompute_with_feedback(app: &mut App) {
     if let Err(e) = app.recompute() {
-        app.error = Some(app::user_message(e));
+        app.error = Some(user_message(e));
         app.status = None;
     }
 }
@@ -206,7 +198,7 @@ fn handle_export_prompt(app: &mut App, code: KeyCode) -> bool {
         }
         KeyCode::Enter => {
             if let Err(e) = app.close_export_prompt(true) {
-                app.error = Some(app::user_message(e));
+                app.error = Some(user_message(e));
                 app.status = None;
             }
         }

@@ -4,9 +4,20 @@ version = "0.1.0"
 edition = "2021"
 description = "TUI for approximating first-order ODEs y' = F(x,y)"
 
+[lib]
+name = "numerical_approximater"
+path = "src/lib.rs"
+
 [dependencies]
 anyhow = "1"
 crossterm = "0.28"
 env = "1.0.1"
 evalexpr = "11"
 ratatui = "0.29"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "hot_path"
+harness = false
