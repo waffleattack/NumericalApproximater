@@ -33,6 +33,7 @@ src/
 │   ├── mod.rs        # OdeFunction: parse + eval F(x,y)
 │   └── parse.rs      # Tokenize, validate, normalize user equations
 ├── solver.rs         # Euler / improved Euler / RK4 integration
+├── slope_field.rs    # Slope segment grid for y' = F(x,y)
 ├── ui/
 │   ├── mod.rs        # draw(): top-level layout
 │   ├── layout.rs     # Borders, modals, centered_rect
@@ -61,6 +62,7 @@ flowchart TD
     app --> recompute[App::recompute]
     recompute --> expr[OdeFunction::parse / eval]
     recompute --> solver[solver::integrate]
+    recompute --> slope[slope_field::build_slope_field]
     recompute --> curves[App.curves]
     draw --> sidebar[ui::sidebar]
     draw --> chart[ui::chart]
@@ -100,6 +102,7 @@ Routing order in `handle_key`:
 
 - `Method` — Euler, Improved Euler, Runge–Kutta
 - `MethodChoice` — single method or “all three”
+- `GraphDisplay` — solution only, slope field only, or both
 - `CurveSeries` — one plotted curve (points, subsampled `plot_xy`, label)
 
 **`focus.rs`** — keyboard navigation:
@@ -139,6 +142,16 @@ Errors and success messages go to `App.error` and `App.status`; the footer in `u
 5. Insert implicit `*` (e.g. `2y` → `2*y`)
 
 Tests for parsing and evaluation are in `expr/mod.rs` under `#[cfg(test)]`.
+
+
+### `slope_field.rs` — slope field
+
+| Function | Purpose |
+|----------|---------|
+| `build_slope_field` | Sample **F(x, y)** on a grid and build short direction segments |
+| `view_bounds` | Chart window from curve points or sidebar parameters |
+
+Segments are stored on `App.slope_field` during `recompute` when graph mode includes the slope field.
 
 
 ### `solver.rs` — numerical integration
@@ -214,6 +227,8 @@ Significant-figures formatting for chart ticks, curve labels, and export. Shared
 | Why won’t my equation parse? | `expr/parse.rs` (`validate_syntax`, error messages) |
 | How is backward integration implemented? | `solver.rs` → `integrate` (signed steps) |
 | How are curves colored? | `ui/chart.rs` → `method_color`, `family_color` |
+| How does the slope field work? | `slope_field.rs`, `app::recompute`, `ui/chart.rs` |
+| Slope only, no solution line? | Sidebar **graph** → **slope** (`GraphDisplay::SlopeField`) |
 | What gets written to disk? | `export.rs` |
 | How do I run tests? | `cargo test` (tests live next to each module) |
 | How is performance measured? | `benches/hot_path.rs`, `scripts/compare_perf.sh` |

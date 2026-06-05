@@ -131,10 +131,10 @@ fn handle_key(app: &mut App, code: KeyCode, _mods: KeyModifiers) -> bool {
     match code {
         KeyCode::Char('q') if !app.focus.is_text_input() => return true,
         KeyCode::Char('s') if !app.focus.is_text_input() => app.open_export_prompt(),
-        KeyCode::Tab => app.focus = app.focus.next(app.y0_family_enabled),
-        KeyCode::BackTab => app.focus = app.focus.prev(app.y0_family_enabled),
-        KeyCode::Up => app.focus = app.focus.prev(app.y0_family_enabled),
-        KeyCode::Down => app.focus = app.focus.next(app.y0_family_enabled),
+        KeyCode::Tab => app.focus = app.focus.next(app.focus_nav()),
+        KeyCode::BackTab => app.focus = app.focus.prev(app.focus_nav()),
+        KeyCode::Up => app.focus = app.focus.prev(app.focus_nav()),
+        KeyCode::Down => app.focus = app.focus.next(app.focus_nav()),
         KeyCode::Enter => {
             if handle_activate(app) {
                 return true;
@@ -174,6 +174,21 @@ fn handle_activate(app: &mut App) -> bool {
         | Focus::Y0Count
         | Focus::XEnd
         | Focus::H => {
+            recompute_with_feedback(app);
+            false
+        }
+        Focus::ViewXMin
+        | Focus::ViewXMax
+        | Focus::ViewYMin
+        | Focus::ViewYMax => {
+            if let Err(e) = app.recompute_with_view_bounds() {
+                app.error = Some(user_message(e));
+                app.status = None;
+            }
+            false
+        }
+        Focus::GraphDisplay => {
+            app.cycle_graph_display();
             recompute_with_feedback(app);
             false
         }

@@ -3,20 +3,26 @@
 use anyhow::Result;
 
 use crate::expr::OdeFunction;
-use crate::format::format_sigfigs_with;
+use crate::format::{format_sigfigs_with, CHART_SIGFIGS};
 use crate::input::TextInput;
+use crate::slope_field::{
+    build_slope_field, view_bounds, SlopeSegment, ViewBounds, SLOPE_FIELD_COLS, SLOPE_FIELD_ROWS,
+};
 use crate::solver::{integrate, linspace_inclusive};
 mod focus;
 mod model;
 
-pub use focus::{ExportPromptFocus, Focus};
-pub use model::{CurveSeries, Method, MethodChoice, MAX_GRAPH_POINTS, MAX_Y0_FAMILY};
+pub use focus::{ExportPromptFocus, Focus, FocusNav};
+pub use model::{
+    CurveSeries, GraphDisplay, Method, MethodChoice, MAX_GRAPH_POINTS, MAX_Y0_FAMILY,
+};
 
 /// Full TUI application state.
 pub struct App {
     pub focus: Focus,
     pub equation: TextInput,
     pub method_choice: MethodChoice,
+    pub graph_display: GraphDisplay,
     pub method_menu_open: bool,
     pub method_menu_highlight: usize,
     pub y0_family_enabled: bool,
@@ -26,12 +32,18 @@ pub struct App {
     pub y0_count: TextInput,
     pub x_end: TextInput,
     pub h: TextInput,
+    pub view_x_min: TextInput,
+    pub view_x_max: TextInput,
+    pub view_y_min: TextInput,
+    pub view_y_max: TextInput,
     pub export_prompt_open: bool,
     pub export_prompt_focus: ExportPromptFocus,
     pub export_filename: TextInput,
     pub export_h: TextInput,
     pub export_n_points: TextInput,
     pub curves: Vec<CurveSeries>,
+    pub slope_field: Vec<SlopeSegment>,
+    pub view_bounds: ViewBounds,
     pub error: Option<String>,
     pub status: Option<String>,
 }
@@ -109,6 +121,7 @@ impl App {
             focus: Focus::Equation,
             equation: TextInput::new("y - y^3"),
             method_choice: MethodChoice::RungeKutta,
+            graph_display: GraphDisplay::Solution,
             method_menu_open: false,
             method_menu_highlight: 0,
             y0_family_enabled: false,
@@ -118,12 +131,21 @@ impl App {
             y0_count: TextInput::new("7"),
             x_end: TextInput::new("3"),
             h: TextInput::new("0.01"),
+            view_x_min: TextInput::new("0"),
+            view_x_max: TextInput::new("3"),
+            view_y_min: TextInput::new("-1"),
+            view_y_max: TextInput::new("2"),
             export_prompt_open: false,
             export_prompt_focus: ExportPromptFocus::Filename,
             export_filename: TextInput::new("ode_export"),
             export_h: TextInput::new("0.01"),
             export_n_points: TextInput::new("100"),
             curves: Vec::new(),
+            slope_field: Vec::new(),
+            view_bounds: ViewBounds {
+                x: [0.0, 1.0],
+                y: [0.0, 1.0],
+            },
             error: None,
             status: None,
         };
@@ -134,6 +156,31 @@ impl App {
     /// Toggle the y₀ family mode on or off.
     pub fn toggle_y0_family(&mut self) {
         self.y0_family_enabled = !self.y0_family_enabled;
+    }
+
+    /// Cycle graph display: solution → slope field → both.
+    ///
+    /// No-op when **All three methods** is selected (slope field is disabled).
+    pub fn cycle_graph_display(&mut self) {
+        if !self.method_choice.allows_slope_field() {
+            return;
+        }
+        self.graph_display = self.graph_display.next();
+    }
+
+    /// Reset graph display to solution when slope field is unavailable.
+    pub fn clamp_graph_display_for_method(&mut self) {
+        if !self.method_choice.allows_slope_field() {
+            self.graph_display = GraphDisplay::Solution;
+        }
+    }
+
+    /// Tab-order flags for the current sidebar layout.
+    pub fn focus_nav(&self) -> FocusNav {
+        FocusNav {
+            y0_family: self.y0_family_enabled,
+            slope_bounds: self.graph_display == GraphDisplay::SlopeField,
+        }
     }
 
     /// Return the text field that currently has keyboard focus.
@@ -150,7 +197,12 @@ impl App {
             Focus::Y0Count => Some(&mut self.y0_count),
             Focus::XEnd => Some(&mut self.x_end),
             Focus::H => Some(&mut self.h),
+            Focus::ViewXMin => Some(&mut self.view_x_min),
+            Focus::ViewXMax => Some(&mut self.view_x_max),
+            Focus::ViewYMin => Some(&mut self.view_y_min),
+            Focus::ViewYMax => Some(&mut self.view_y_max),
             Focus::Y0Family
+            | Focus::GraphDisplay
             | Focus::ExportButton
             | Focus::QuitButton
             | Focus::MethodDropdown => None,
@@ -171,6 +223,7 @@ impl App {
     pub fn close_method_menu(&mut self, apply: bool) {
         if apply && self.method_menu_open {
             self.method_choice = MethodChoice::from_index(self.method_menu_highlight);
+            self.clamp_graph_display_for_method();
             if let Err(e) = self.recompute() {
                 self.error = Some(user_message(e));
                 self.status = None;
@@ -251,44 +304,130 @@ impl App {
     /// # Errors
     ///
     /// Returns an error if parsing, validation, or integration fails.
+    /// Recompute curves and/or slope field; refresh slope view defaults from the solution.
     pub fn recompute(&mut self) -> Result<()> {
+        self.recompute_inner(true)
+    }
+
+    /// Recompute using the current slope view-bound inputs (no default refresh).
+    pub fn recompute_with_view_bounds(&mut self) -> Result<()> {
+        self.recompute_inner(false)
+    }
+
+    fn recompute_inner(&mut self, refresh_slope_defaults: bool) -> Result<()> {
         self.error = None;
         self.status = None;
         let f = OdeFunction::parse(self.equation.as_str())?;
         let (x0, _, x_end, h) = self.parse_params()?;
         let y0_values = self.y0_values()?;
-        let family_total = y0_values.len();
 
         for &y0 in &y0_values {
             f.validate_at(x0, y0)?;
         }
 
         let mut curves = Vec::new();
-        for &method in self.method_choice.methods() {
-            for (family_index, &y0_init) in y0_values.iter().enumerate() {
-                let points = integrate(&f, method, x0, y0_init, x_end, h)?;
-                let plot_xy = crate::solver::subsample_plot(&points, MAX_GRAPH_POINTS);
-                let label = if family_total > 1 {
-                    format!(
-                        "{}  y₀={}",
-                        method.short_label(),
-                        format_sigfigs_with(y0_init, 4)
-                    )
-                } else {
-                    method.short_label().to_string()
-                };
-                curves.push(CurveSeries {
-                    method,
-                    label,
-                    family_index,
-                    family_total,
-                    points,
-                    plot_xy,
-                });
+        if self.graph_display.shows_solution() {
+            let family_total = y0_values.len();
+            for &method in self.method_choice.methods() {
+                for (family_index, &y0_init) in y0_values.iter().enumerate() {
+                    let points = integrate(&f, method, x0, y0_init, x_end, h)?;
+                    let plot_xy = crate::solver::subsample_plot(&points, MAX_GRAPH_POINTS);
+                    let label = if family_total > 1 {
+                        format!(
+                            "{}  y₀={}",
+                            method.short_label(),
+                            format_sigfigs_with(y0_init, 4)
+                        )
+                    } else {
+                        method.short_label().to_string()
+                    };
+                    curves.push(CurveSeries {
+                        method,
+                        label,
+                        family_index,
+                        family_total,
+                        points,
+                        plot_xy,
+                    });
+                }
             }
         }
         self.curves = curves;
+
+        if self.graph_display == GraphDisplay::SlopeField {
+            if refresh_slope_defaults {
+                let sol_bounds =
+                    self.solution_view_bounds(&f, x0, x_end, h, &y0_values)?;
+                self.apply_view_bound_defaults(sol_bounds);
+            }
+            self.view_bounds = self.parse_view_bounds_inputs()?;
+        } else {
+            let curve_points: Vec<(f64, f64)> = self
+                .curves
+                .iter()
+                .flat_map(|c| c.points.iter().map(|p| (p.x, p.y)))
+                .collect();
+            self.view_bounds = view_bounds(x0, x_end, &y0_values, &curve_points);
+        }
+
+        if self.graph_display.shows_slope_field() {
+            self.slope_field = build_slope_field(
+                &f,
+                self.view_bounds,
+                SLOPE_FIELD_COLS,
+                SLOPE_FIELD_ROWS,
+            );
+        } else {
+            self.slope_field.clear();
+        }
+
         Ok(())
+    }
+
+    fn solution_view_bounds(
+        &self,
+        f: &OdeFunction,
+        x0: f64,
+        x_end: f64,
+        h: f64,
+        y0_values: &[f64],
+    ) -> Result<ViewBounds> {
+        let mut curve_points = Vec::new();
+        for &method in self.method_choice.methods() {
+            for &y0_init in y0_values {
+                let points = integrate(f, method, x0, y0_init, x_end, h)?;
+                curve_points.extend(points.iter().map(|p| (p.x, p.y)));
+            }
+        }
+        Ok(view_bounds(x0, x_end, y0_values, &curve_points))
+    }
+
+    fn apply_view_bound_defaults(&mut self, bounds: ViewBounds) {
+        self.view_x_min =
+            TextInput::new(&format_sigfigs_with(bounds.x[0], CHART_SIGFIGS));
+        self.view_x_max =
+            TextInput::new(&format_sigfigs_with(bounds.x[1], CHART_SIGFIGS));
+        self.view_y_min =
+            TextInput::new(&format_sigfigs_with(bounds.y[0], CHART_SIGFIGS));
+        self.view_y_max =
+            TextInput::new(&format_sigfigs_with(bounds.y[1], CHART_SIGFIGS));
+    }
+
+    fn parse_view_bounds_inputs(&self) -> Result<ViewBounds> {
+        let x_min = parse_input_f64(&self.view_x_min, "view x min must be a number")?;
+        let x_max = parse_input_f64(&self.view_x_max, "view x max must be a number")?;
+        let y_min = parse_input_f64(&self.view_y_min, "view y min must be a number")?;
+        let y_max = parse_input_f64(&self.view_y_max, "view y max must be a number")?;
+        if x_min >= x_max {
+            anyhow::bail!("view x min must be less than x max");
+        }
+        if y_min >= y_max {
+            anyhow::bail!("view y min must be less than y max");
+        }
+        Ok(ViewBounds {
+            x: [x_min, x_max],
+            y: [y_min, y_max],
+        })
     }
 
     /// Open the export dialog with defaults copied from the sidebar.
@@ -452,6 +591,81 @@ mod tests {
     }
 
     #[test]
+    fn graph_display_cycles_three_modes() {
+        let mut mode = GraphDisplay::Solution;
+        mode = mode.next();
+        assert_eq!(mode, GraphDisplay::SlopeField);
+        mode = mode.next();
+        assert_eq!(mode, GraphDisplay::Both);
+        mode = mode.next();
+        assert_eq!(mode, GraphDisplay::Solution);
+    }
+
+    #[test]
+    fn all_methods_clamps_graph_display_to_solution() {
+        let mut app = test_app();
+        app.graph_display = GraphDisplay::SlopeField;
+        app.method_choice = MethodChoice::All;
+        app.clamp_graph_display_for_method();
+        assert_eq!(app.graph_display, GraphDisplay::Solution);
+    }
+
+    #[test]
+    fn cycle_graph_display_noop_when_all_methods() {
+        let mut app = test_app();
+        app.method_choice = MethodChoice::All;
+        app.graph_display = GraphDisplay::Solution;
+        app.cycle_graph_display();
+        assert_eq!(app.graph_display, GraphDisplay::Solution);
+    }
+
+    #[test]
+    fn recompute_slope_only_skips_integration() {
+        let mut app = test_app();
+        app.graph_display = GraphDisplay::SlopeField;
+        app.recompute().unwrap();
+        assert!(app.curves.is_empty());
+        assert!(!app.slope_field.is_empty());
+    }
+
+    #[test]
+    fn slope_defaults_match_solution_bounds() {
+        let mut app = test_app();
+        app.recompute().unwrap();
+        let solution_bounds = app.view_bounds;
+
+        app.graph_display = GraphDisplay::SlopeField;
+        app.recompute().unwrap();
+
+        assert!(app.view_x_min.as_str().parse::<f64>().unwrap() <= solution_bounds.x[0] + 0.01);
+        assert!(app.view_x_max.as_str().parse::<f64>().unwrap() >= solution_bounds.x[1] - 0.01);
+        assert!(!app.slope_field.is_empty());
+    }
+
+    #[test]
+    fn custom_view_bounds_change_slope_window() {
+        let mut app = test_app();
+        app.graph_display = GraphDisplay::SlopeField;
+        app.recompute().unwrap();
+        app.view_x_min = TextInput::new("-5");
+        app.view_x_max = TextInput::new("5");
+        app.view_y_min = TextInput::new("-5");
+        app.view_y_max = TextInput::new("5");
+        app.recompute_with_view_bounds().unwrap();
+        assert!((app.view_bounds.x[0] - (-5.0)).abs() < 1e-9);
+        assert!((app.view_bounds.x[1] - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn recompute_both_populates_curves_and_slope() {
+        let mut app = test_app();
+        app.graph_display = GraphDisplay::Both;
+        app.recompute().unwrap();
+        assert!(!app.curves.is_empty());
+        assert!(!app.slope_field.is_empty());
+    }
+
+    #[test]
     fn recompute_success_simple_equation() {
         let mut app = test_app();
         app.equation = TextInput::new("1");
@@ -510,35 +724,68 @@ mod tests {
 
     #[test]
     fn focus_next_without_y0_family() {
+        let nav = FocusNav {
+            y0_family: false,
+            slope_bounds: false,
+        };
         let mut f = Focus::Equation;
-        f = f.next(false);
+        f = f.next(nav);
         assert_eq!(f, Focus::MethodDropdown);
-        f = f.next(false);
+        f = f.next(nav);
+        assert_eq!(f, Focus::GraphDisplay);
+        f = f.next(nav);
         assert_eq!(f, Focus::Y0Family);
-        f = f.next(false);
+        f = f.next(nav);
         assert_eq!(f, Focus::X0);
-        f = f.next(false);
+        f = f.next(nav);
         assert_eq!(f, Focus::Y0);
-        f = f.next(false);
+        f = f.next(nav);
         assert_eq!(f, Focus::XEnd);
     }
 
     #[test]
+    fn focus_includes_view_bounds_in_slope_mode() {
+        let nav = FocusNav {
+            y0_family: false,
+            slope_bounds: true,
+        };
+        let mut f = Focus::H;
+        f = f.next(nav);
+        assert_eq!(f, Focus::ViewXMin);
+        f = f.next(nav);
+        assert_eq!(f, Focus::ViewXMax);
+        f = f.next(nav);
+        assert_eq!(f, Focus::ViewYMin);
+        f = f.next(nav);
+        assert_eq!(f, Focus::ViewYMax);
+        f = f.next(nav);
+        assert_eq!(f, Focus::ExportButton);
+    }
+
+    #[test]
     fn focus_next_with_y0_family_includes_extra_fields() {
+        let nav = FocusNav {
+            y0_family: true,
+            slope_bounds: false,
+        };
         let mut f = Focus::Y0;
-        f = f.next(true);
+        f = f.next(nav);
         assert_eq!(f, Focus::Y0End);
-        f = f.next(true);
+        f = f.next(nav);
         assert_eq!(f, Focus::Y0Count);
-        f = f.next(true);
+        f = f.next(nav);
         assert_eq!(f, Focus::XEnd);
     }
 
     #[test]
     fn focus_prev_wraps() {
-        assert_eq!(Focus::Equation.prev(false), Focus::QuitButton);
-        assert_eq!(Focus::ExportButton.next(false), Focus::QuitButton);
-        assert_eq!(Focus::QuitButton.next(false), Focus::Equation);
+        let nav = FocusNav {
+            y0_family: false,
+            slope_bounds: false,
+        };
+        assert_eq!(Focus::Equation.prev(nav), Focus::QuitButton);
+        assert_eq!(Focus::ExportButton.next(nav), Focus::QuitButton);
+        assert_eq!(Focus::QuitButton.next(nav), Focus::Equation);
     }
 
     #[test]

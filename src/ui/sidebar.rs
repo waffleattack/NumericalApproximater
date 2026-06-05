@@ -7,7 +7,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{App, ExportPromptFocus, Focus, MethodChoice};
+use crate::app::{App, ExportPromptFocus, Focus, GraphDisplay, MethodChoice};
 
 use super::layout::{centered_rect, field_border, fill_black, modal_block};
 use super::widgets::{
@@ -17,6 +17,7 @@ use super::widgets::{
 pub(super) fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     let mut constraints = vec![
         Constraint::Length(3), // method
+        Constraint::Length(3), // graph display
         Constraint::Length(3), // y0 family
         Constraint::Length(3), // x0
         Constraint::Length(3), // y0
@@ -28,6 +29,16 @@ pub(super) fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     constraints.extend([
         Constraint::Length(3), // x_end
         Constraint::Length(3), // h
+    ]);
+    if app.graph_display == GraphDisplay::SlopeField {
+        constraints.extend([
+            Constraint::Length(3), // view x min
+            Constraint::Length(3), // view x max
+            Constraint::Length(3), // view y min
+            Constraint::Length(3), // view y max
+        ]);
+    }
+    constraints.extend([
         Constraint::Length(1), // legend
         Constraint::Length(3), // export
         Constraint::Length(3), // quit
@@ -49,6 +60,8 @@ pub(super) fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
         app.method_menu_open,
     );
     i += 1;
+    draw_graph_display_toggle(frame, rows[i], app);
+    i += 1;
     draw_y0_family_toggle(frame, rows[i], app);
     i += 1;
     draw_sidebar_field(frame, rows[i], "x₀", &app.x0, app.focus == Focus::X0);
@@ -66,6 +79,16 @@ pub(super) fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     i += 1;
     draw_sidebar_field(frame, rows[i], "h", &app.h, app.focus == Focus::H);
     i += 1;
+    if app.graph_display == GraphDisplay::SlopeField {
+        draw_sidebar_field(frame, rows[i], "x min", &app.view_x_min, app.focus == Focus::ViewXMin);
+        i += 1;
+        draw_sidebar_field(frame, rows[i], "x max", &app.view_x_max, app.focus == Focus::ViewXMax);
+        i += 1;
+        draw_sidebar_field(frame, rows[i], "y min", &app.view_y_min, app.focus == Focus::ViewYMin);
+        i += 1;
+        draw_sidebar_field(frame, rows[i], "y max", &app.view_y_max, app.focus == Focus::ViewYMax);
+        i += 1;
+    }
 
     let legend = legend_text(app);
     frame.render_widget(
@@ -79,6 +102,48 @@ pub(super) fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     i += 1;
     draw_quit_button(frame, rows[i], app.focus == Focus::QuitButton);
 }
+/// Draw the graph display mode toggle (solution / slope / both).
+fn draw_graph_display_toggle(frame: &mut Frame, area: Rect, app: &App) {
+    let focused = app.focus == Focus::GraphDisplay;
+    let enabled = app.method_choice.allows_slope_field();
+    let mode = app.graph_display;
+    let accent = if enabled {
+        match mode {
+            GraphDisplay::Solution => Color::Blue,
+            GraphDisplay::SlopeField => Color::Magenta,
+            GraphDisplay::Both => Color::LightMagenta,
+        }
+    } else {
+        Color::DarkGray
+    };
+    let style = if !enabled {
+        Style::default().fg(Color::DarkGray)
+    } else if focused {
+        Style::default()
+            .fg(Color::Black)
+            .bg(accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(accent)
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(if enabled {
+            field_border(focused)
+        } else {
+            Color::DarkGray
+        }))
+        .title(" graph ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let label = if enabled {
+        format!(" {} ", mode.label())
+    } else {
+        " solution only ".to_string()
+    };
+    frame.render_widget(Paragraph::new(label).style(style), inner);
+}
+
 /// Draw the y₀ family on/off toggle control.
 ///
 /// # Arguments

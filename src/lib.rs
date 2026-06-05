@@ -7,13 +7,15 @@
 //!    [`App::recompute`] and export flow ([`app`]).
 //! 3. **`expr`** — parse **F(x, y)** ([`expr::parse`]), evaluate via [`OdeFunction`].
 //! 4. **`solver`** — fixed-step integration and plot subsampling.
-//! 5. **`ui`** — [`ui::draw`] composes equation bar, sidebar, chart, footer ([`ui`]).
-//! 6. **`export`**, **`format`**, **`input`** — file output, number formatting, text fields.
+//! 5. **`slope_field`** — slope segment grid for the graph panel.
+//! 6. **`ui`** — [`ui::draw`] composes equation bar, sidebar, chart, footer ([`ui`]).
+//! 7. **`export`**, **`format`**, **`input`** — file output, number formatting, text fields.
 
 pub mod app;
 pub mod export;
 pub mod expr;
 pub mod format;
 pub mod input;
+pub mod slope_field;
 pub mod solver;
 pub mod ui;

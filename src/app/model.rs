@@ -99,6 +99,47 @@ impl MethodChoice {
             MethodChoice::All => &Method::ALL,
         }
     }
+
+    /// Slope field is only supported for a single-method view.
+    pub fn allows_slope_field(self) -> bool {
+        !matches!(self, MethodChoice::All)
+    }
+}
+
+/// What to draw in the graph panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphDisplay {
+    Solution,
+    SlopeField,
+    Both,
+}
+
+impl GraphDisplay {
+    /// Cycle solution → slope → both.
+    pub fn next(self) -> Self {
+        match self {
+            GraphDisplay::Solution => GraphDisplay::SlopeField,
+            GraphDisplay::SlopeField => GraphDisplay::Both,
+            GraphDisplay::Both => GraphDisplay::Solution,
+        }
+    }
+
+    /// Sidebar label for the current mode.
+    pub fn label(self) -> &'static str {
+        match self {
+            GraphDisplay::Solution => "solution",
+            GraphDisplay::SlopeField => "slope",
+            GraphDisplay::Both => "both",
+        }
+    }
+
+    pub fn shows_solution(self) -> bool {
+        matches!(self, GraphDisplay::Solution | GraphDisplay::Both)
+    }
+
+    pub fn shows_slope_field(self) -> bool {
+        matches!(self, GraphDisplay::SlopeField | GraphDisplay::Both)
+    }
 }
 
 /// One plotted/exported solution curve with display metadata.

@@ -1,10 +1,18 @@
 //! Keyboard focus and tab order in the main UI and export dialog.
 
+/// Tab-order configuration for the main sidebar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FocusNav {
+    pub y0_family: bool,
+    pub slope_bounds: bool,
+}
+
 /// Keyboard focus target in the main UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
     Equation,
     MethodDropdown,
+    GraphDisplay,
     Y0Family,
     X0,
     Y0,
@@ -12,89 +20,65 @@ pub enum Focus {
     Y0Count,
     XEnd,
     H,
+    ViewXMin,
+    ViewXMax,
+    ViewYMin,
+    ViewYMax,
     ExportButton,
     QuitButton,
 }
 
 impl Focus {
     /// Move focus to the next field in tab order.
-    ///
-    /// # Arguments
-    ///
-    /// * `y0_family` - Whether the extended y₀ family fields are visible.
-    ///
-    /// # Returns
-    ///
-    /// The next focus target, wrapping at the end.
-    pub fn next(self, y0_family: bool) -> Self {
-        step(self, y0_family, true)
+    pub fn next(self, nav: FocusNav) -> Self {
+        step(self, nav, true)
     }
 
     /// Move focus to the previous field in tab order.
-    ///
-    /// # Arguments
-    ///
-    /// * `y0_family` - Whether the extended y₀ family fields are visible.
-    ///
-    /// # Returns
-    ///
-    /// The previous focus target, wrapping at the start.
-    pub fn prev(self, y0_family: bool) -> Self {
-        step(self, y0_family, false)
+    pub fn prev(self, nav: FocusNav) -> Self {
+        step(self, nav, false)
     }
 
-    /// Return whether this focus target is an editable text field.
-    ///
-    /// # Returns
-    ///
     /// `true` for equation and numeric inputs; `false` for buttons and toggles.
     pub fn is_text_input(self) -> bool {
         !matches!(
             self,
-            Focus::MethodDropdown | Focus::ExportButton | Focus::QuitButton | Focus::Y0Family
+            Focus::MethodDropdown
+                | Focus::GraphDisplay
+                | Focus::ExportButton
+                | Focus::QuitButton
+                | Focus::Y0Family
         )
     }
 }
 
-/// Advance or retreat one step in the focus ring.
-///
-/// # Arguments
-///
-/// * `from` - Current focus.
-/// * `y0_family` - Whether y₀ end/count fields are in the tab order.
-/// * `forward` - `true` for next, `false` for previous.
-///
-/// # Returns
-///
-/// The new focus value, wrapping at the ends of the ring.
-fn step(from: Focus, y0_family: bool, forward: bool) -> Focus {
-    let order: &[Focus] = if y0_family {
-        &[
-            Focus::Equation,
-            Focus::MethodDropdown,
-            Focus::Y0Family,
-            Focus::X0,
-            Focus::Y0,
-            Focus::Y0End,
-            Focus::Y0Count,
-            Focus::XEnd,
-            Focus::H,
-            Focus::ExportButton,
-            Focus::QuitButton,
-        ]
-    } else {
-        &[
-            Focus::Equation,
-            Focus::MethodDropdown,
-            Focus::Y0Family,
-            Focus::X0,
-            Focus::Y0,
-            Focus::XEnd,
-            Focus::H,
-            Focus::ExportButton,
-            Focus::QuitButton,
-        ]
-    };
+fn focus_order(nav: FocusNav) -> Vec<Focus> {
+    let mut order = vec![
+        Focus::Equation,
+        Focus::MethodDropdown,
+        Focus::GraphDisplay,
+        Focus::Y0Family,
+        Focus::X0,
+        Focus::Y0,
+    ];
+    if nav.y0_family {
+        order.extend([Focus::Y0End, Focus::Y0Count]);
+    }
+    order.extend([Focus::XEnd, Focus::H]);
+    if nav.slope_bounds {
+        order.extend([
+            Focus::ViewXMin,
+            Focus::ViewXMax,
+            Focus::ViewYMin,
+            Focus::ViewYMax,
+        ]);
+    }
+    order.extend([Focus::ExportButton, Focus::QuitButton]);
+    order
+}
+
+fn step(from: Focus, nav: FocusNav, forward: bool) -> Focus {
+    let order = focus_order(nav);
     let i = order.iter().position(|&f| f == from).unwrap_or(0);
     let n = order.len();
     let next_i = if forward {
@@ -120,21 +104,11 @@ impl ExportPromptFocus {
         ExportPromptFocus::NumPoints,
     ];
 
-    /// Next field in the export dialog tab order.
-    ///
-    /// # Returns
-    ///
-    /// The following [`ExportPromptFocus`], wrapping at the end.
     pub fn next(self) -> Self {
         let i = Self::ORDER.iter().position(|&f| f == self).unwrap_or(0);
         Self::ORDER[(i + 1) % Self::ORDER.len()]
     }
 
-    /// Previous field in the export dialog tab order.
-    ///
-    /// # Returns
-    ///
-    /// The preceding [`ExportPromptFocus`], wrapping at the start.
     pub fn prev(self) -> Self {
         let i = Self::ORDER.iter().position(|&f| f == self).unwrap_or(0);
         Self::ORDER[(i + Self::ORDER.len() - 1) % Self::ORDER.len()]

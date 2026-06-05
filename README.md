@@ -24,7 +24,7 @@ cargo run --release
 |------|---------|
 | **Top bar** | Equation `y' = …` — edit **F(x, y)** here |
 | **Graph** | Approximate solution curve(s) |
-| **Sidebar** | Method, **y₀ family** toggle, interval (**x₀**, **x_end**), step size **h**, initial value(s), **Save**, **Quit** |
+| **Sidebar** | Method, **graph** mode (solution / slope / both), **y₀ family**, interval (**x₀**, **x_end**), step size **h**, initial value(s), **Save**, **Quit** |
 | **Footer** | Errors (red) or brief confirmations (green) |
 
 The default equation is **`y - y^3`** (i.e. **y' = y − y³**). That model has stable equilibria at **y = ±1** and an unstable equilibrium at **y = 0**; different starting **y₀** can converge, stay near zero, or blow up — useful for trying the **y₀ family** feature.
@@ -38,9 +38,10 @@ The default equation is **`y - y^3`** (i.e. **y' = y − y³**). That model has 
 2. The graph should already show a solution for the defaults (**x₀ = 0**, **y₀ = 0.3**, **x_end = 3**, **h = 0.01**).
 3. **Change the equation** — Tab to the equation bar, edit (e.g. `x - y`), **Enter** to refresh.
 4. **Change the method** — Tab to **Method**, **Enter** to open the list, **↑** / **↓** to pick, **Enter** to confirm (**Esc** to cancel).
-5. **Several initial values** — Tab to **y₀ family**, **Enter** to turn it **ON**, set **y₀ start**, **y₀ end**, and **y₀ #** (max 15), **Enter** to update.
-6. **Export** — Tab to **Save** (or **`s`**), fill in filename / **h** / **points**, **Enter** to save under `exported/`.
-7. **Quit** — **Quit** + **Enter**, **`q`**, or **Ctrl+C**.
+5. **Slope field** — Tab to **graph**, **Enter** to cycle **solution** → **slope** → **both** (not available with **All three methods**). In **slope** mode, edit **x min** / **x max** / **y min** / **y max** (defaults match the solution window); **Enter** to apply.
+6. **Several initial values** — Tab to **y₀ family**, **Enter** to turn it **ON**, set **y₀ start**, **y₀ end**, and **y₀ #** (max 15), **Enter** to update.
+7. **Export** — Tab to **Save** (or **`s`**), fill in filename / **h** / **points**, **Enter** to save under `exported/`.
+8. **Quit** — **Quit** + **Enter**, **`q`**, or **Ctrl+C**.
 
 Check the footer if something fails.
 
